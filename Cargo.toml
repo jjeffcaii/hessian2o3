@@ -1,0 +1,14 @@
+[package]
+name = "hessian2o3"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bytes = "1.11.1"
+log = "0.4.32"
+nom = "8.0.0"
+
+[dev-dependencies]
+pretty_env_logger = "0.5"
+chrono = "0.4.45"
+hex = "0.4.3"
