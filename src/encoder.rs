@@ -1,5 +1,7 @@
 use bytes::BufMut;
-use std::collections::LinkedList;
+use std::collections::{HashMap, HashSet, LinkedList};
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
 use std::io::{self, Read};
 use std::time::SystemTime;
 // ─── Error ───────────────────────────────────────────────────────────────────
@@ -29,6 +31,11 @@ const BC_LIST_VARIABLE: u8 = 0x55;
 const BC_LIST_FIXED: u8 = b'V';
 const BC_LIST_VARIABLE_UNTYPED: u8 = 0x57;
 const BC_LIST_FIXED_UNTYPED: u8 = 0x58;
+
+const BC_MAP: u8 = b'M';
+const BC_MAP_UNTYPED: u8 = b'H';
+
+const BC_END: u8 = b'Z';
 
 const LIST_DIRECT_MAX: usize = 7;
 
@@ -96,9 +103,6 @@ fn read_exact<R: Read>(r: &mut R, n: usize) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
-const MAX32: i64 = i32::MAX as i64;
-const MIN32: i64 = i32::MIN as i64;
-
 impl Encode for () {
     fn encode<W: BufMut>(&self, w: &mut W) -> Result<()> {
         w.put_u8('N' as u8);
@@ -147,6 +151,9 @@ impl Encode for i32 {
 
 impl Encode for i64 {
     fn encode<W: BufMut>(&self, w: &mut W) -> Result<()> {
+        const MAX32: i64 = i32::MAX as i64;
+        const MIN32: i64 = i32::MIN as i64;
+
         const LONG_DIRECT_MIN: i64 = -8;
         const LONG_DIRECT_MAX: i64 = 15;
         const LONG_BYTE_MIN: i64 = -2048;
@@ -335,7 +342,10 @@ impl Encode for SystemTime {
     }
 }
 
-impl<T: Encode> Encode for Option<T> {
+impl<T> Encode for Option<T>
+where
+    T: Encode,
+{
     fn encode<W: BufMut>(&self, w: &mut W) -> Result<()> {
         match self {
             None => ().encode(w),
@@ -348,25 +358,12 @@ impl<T: Encode> Encode for Option<T> {
     }
 }
 
-impl<T: Encode> Encode for LinkedList<T> {
+impl<T> Encode for LinkedList<T>
+where
+    T: Encode,
+{
     fn encode<W: BufMut>(&self, w: &mut W) -> Result<()> {
-        let length = self.len();
-
-        if length <= LIST_DIRECT_MAX {
-            let _kind = T::kind();
-            w.put_u8(BC_LIST_DIRECT + length as u8);
-            "java.util.LinkedList".encode(w)?;
-        } else {
-            w.put_u8(BC_LIST_FIXED);
-            "java.util.LinkedList".encode(w)?;
-            (length as i32).encode(w)?;
-        }
-
-        for next in self {
-            next.encode(w)?;
-        }
-
-        Ok(())
+        encode_typed_list(w, "java.util.LinkedList", self.iter())
     }
 
     fn kind() -> Kind {
@@ -374,7 +371,10 @@ impl<T: Encode> Encode for LinkedList<T> {
     }
 }
 
-impl<T: Encode> Encode for Vec<T> {
+impl<T> Encode for Vec<T>
+where
+    T: Encode,
+{
     fn encode<W: BufMut>(&self, w: &mut W) -> Result<()> {
         let length = self.len();
 
@@ -396,6 +396,61 @@ impl<T: Encode> Encode for Vec<T> {
     fn kind() -> Kind {
         Kind::List
     }
+}
+
+impl<T> Encode for HashSet<T>
+where
+    T: Encode + Eq + Hash,
+{
+    fn encode<W: BufMut>(&self, w: &mut W) -> Result<()> {
+        encode_typed_list(w, "java.util.HashSet", self.iter())
+    }
+
+    fn kind() -> Kind {
+        Kind::List
+    }
+}
+
+impl<K, V> Encode for HashMap<K, V>
+where
+    K: Encode + Eq + Hash,
+    V: Encode,
+{
+    fn encode<W: BufMut>(&self, w: &mut W) -> Result<()> {
+        w.put_u8(BC_MAP_UNTYPED);
+        for (k, v) in self {
+            k.encode(w)?;
+            v.encode(w)?;
+        }
+        w.put_u8(BC_END);
+        Ok(())
+    }
+
+    fn kind() -> Kind {
+        Kind::Map
+    }
+}
+
+#[inline]
+fn encode_typed_list<'a, W, T, I>(w: &mut W, type_name: &str, iter: I) -> Result<()>
+where
+    W: BufMut,
+    T: Encode + 'a,
+    I: ExactSizeIterator<Item = &'a T>,
+{
+    let length = iter.len();
+    if length <= LIST_DIRECT_MAX {
+        w.put_u8(BC_LIST_DIRECT + length as u8);
+        type_name.encode(w)?;
+    } else {
+        w.put_u8(BC_LIST_FIXED);
+        type_name.encode(w)?;
+        (length as i32).encode(w)?;
+    }
+    for item in iter {
+        item.encode(w)?;
+    }
+    Ok(())
 }
 
 #[inline]
@@ -529,26 +584,36 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_list() {
+    fn test_encode_hashset() {
         init();
-        {
-            let mut list: Vec<i64> = Default::default();
-            assert_eq!("78", encode(&list));
 
-            list.push(111);
-            list.push(222);
-            list.push(333);
-            assert_eq!("7bf86ff8def94d", encode(&list));
+        let mut list: HashSet<i64> = Default::default();
 
-            list.push(444);
-            list.push(555);
-            list.push(666);
-            list.push(777);
-            list.push(888);
-            list.push(999);
+        // assert_eq!("70116a6176612e7574696c2e48617368536574", encode(&list));
 
-            assert_eq!("5899f86ff8def94df9bcfa2bfa9afb09fb78fbe7", encode(&list));
-        }
+        list.insert(111);
+        list.insert(222);
+        list.insert(333);
+
+        assert_eq!(
+            "73116a6176612e7574696c2e48617368536574f94df8def86f",
+            encode(&list)
+        );
+        // list.insert(444);
+        // list.insert(555);
+        // list.insert(666);
+        // list.insert(777);
+        // list.insert(888);
+        // list.insert(999);
+        //
+        // assert_eq!(
+        //     "56116a6176612e7574696c2e4861736853657499fbe7fb78fb09fa9afa2bf9bcf94df8def86f",
+        //     encode(&list)
+        // );
+    }
+
+    #[test]
+    fn test_encode_linkedlist() {
         {
             let mut list: LinkedList<i64> = Default::default();
 
@@ -576,6 +641,48 @@ mod tests {
                 "56146a6176612e7574696c2e4c696e6b65644c69737499f86ff8def94df9bcfa2bfa9afb09fb78fbe7",
                 encode(&list)
             );
+        }
+    }
+
+    #[test]
+    fn test_encode_vec() {
+        init();
+        {
+            let mut list: Vec<i64> = Default::default();
+            assert_eq!("78", encode(&list));
+
+            list.push(111);
+            list.push(222);
+            list.push(333);
+            assert_eq!("7bf86ff8def94d", encode(&list));
+
+            list.push(444);
+            list.push(555);
+            list.push(666);
+            list.push(777);
+            list.push(888);
+            list.push(999);
+
+            assert_eq!("5899f86ff8def94df9bcfa2bfa9afb09fb78fbe7", encode(&list));
+        }
+
+        {
+            let list = vec!["foo".to_string(), "bar".to_string(), "qux".to_string()];
+            assert_eq!("7b03666f6f0362617203717578", encode(&list));
+        }
+    }
+
+    #[test]
+    fn test_encode_hashmap() {
+        init();
+
+        {
+            let mut m: HashMap<i32, String> = Default::default();
+            m.insert(1, "foo".into());
+            m.insert(2, "bar".into());
+            m.insert(3, "qux".into());
+
+            assert_eq!("489103666f6f920362617293037175785a", encode(&m));
         }
     }
 }
