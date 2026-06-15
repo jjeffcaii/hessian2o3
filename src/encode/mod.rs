@@ -1,6 +1,6 @@
 mod list;
+mod map;
 mod primitive;
-// mod map;
 
 #[derive(Debug)]
 pub enum Kind {
@@ -19,12 +19,12 @@ pub enum Kind {
     String,
 }
 
-pub trait KindSupport {
-    fn kind() -> Kind;
+pub trait Classifier {
+    fn class_name() -> &'static str;
 }
 
-pub trait Typed {
-    fn type_name() -> &'static str;
+pub trait Sizeable {
+    fn size(&self) -> usize;
 }
 
 use crate::Result;
@@ -33,7 +33,6 @@ use bytes::{Buf, BufMut};
 pub trait Encode: Sized {
     fn encode<W: BufMut>(self, w: &mut W) -> Result<()>;
 
-    /// 便捷方法：序列化到 Vec<u8>
     fn to_bytes(self) -> Result<Vec<u8>> {
         let mut buf = Vec::new();
         self.encode(&mut buf)?;
