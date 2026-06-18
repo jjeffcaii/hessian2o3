@@ -3,12 +3,17 @@ name = "hessian2o3"
 version = "0.1.0"
 edition = "2024"
 
+[build-dependencies]
+string_cache_codegen = "0.6"
+
 [dependencies]
 #anyhow = "1.0.102"
 #bytes = "1.11.1"
 log = "0.4.32"
 #nom = "8.0.0"
 serde = { version = "1", features = ["derive"] }
+smallvec = "1.15.2"
+string_cache = "0.9.0"
 thiserror = "2"
 
 [dev-dependencies]

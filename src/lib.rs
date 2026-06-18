@@ -9,6 +9,11 @@
 #[macro_use]
 extern crate log;
 
+/// cached string
+pub(crate) mod cachestr {
+    include!(concat!(env!("OUT_DIR"), "/cachestr.rs"));
+}
+
 pub(crate) mod encode;
 pub(crate) mod error;
 pub(crate) mod ser;

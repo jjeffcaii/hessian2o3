@@ -1,3 +1,5 @@
+use crate::cachestr::Cachestr;
+use smallvec::SmallVec;
 use std::{io, time::SystemTime};
 
 const BC_MAP: u8 = b'M';
@@ -47,6 +49,14 @@ const BC_BINARY_SHORT: u8 = 0x34; // 2-byte length binary
 
 const BINARY_DIRECT_MAX: usize = 0x0f;
 const BINARY_SHORT_MAX: usize = 0x3ff; // 0-1023 binary
+
+const BC_OBJECT_DIRECT: u8 = 0x60;
+const OBJECT_DIRECT_MAX: usize = 0x0f;
+
+#[derive(Debug, Default)]
+pub(crate) struct Context {
+    class_refs: SmallVec<[Cachestr; 16]>,
+}
 
 #[inline]
 pub(crate) fn put_null<W>(w: &mut W) -> io::Result<()>
@@ -337,6 +347,65 @@ where
     W: io::Write,
 {
     w.write_all(&[BC_END])?;
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn put_class<W>(w: &mut W, ctx: &mut Context, class: &str) -> io::Result<Option<usize>>
+where
+    W: io::Write,
+{
+    let length = ctx.class_refs.len();
+    let class = Cachestr::from(class);
+
+    if let Some(i) = ctx.class_refs.iter().position(|x| *x == class) {
+        if i <= OBJECT_DIRECT_MAX {
+            w.write_all(&[BC_OBJECT_DIRECT + i as u8])?;
+        } else {
+            w.write_all(&[b'O'])?;
+            put_i32(w, i as i32)?;
+        }
+        return Ok(Some(i));
+    }
+
+    w.write_all(&[b'C'])?;
+    put_str(w, class.as_ref())?;
+
+    // append class ref
+    ctx.class_refs.push(class);
+
+    Ok(None)
+}
+
+pub(crate) fn put_class_define<W, S>(w: &mut W, fields: &[S]) -> io::Result<()>
+where
+    W: io::Write,
+    S: AsRef<str>,
+{
+    put_i32(w, fields.len() as i32)?;
+
+    for field in fields {
+        put_str(w, field.as_ref())?;
+    }
+
+    Ok(())
+}
+
+pub(crate) fn begin_object<W, S>(
+    w: &mut W,
+    ctx: &mut Context,
+    class: &str,
+    fields: &[S],
+) -> io::Result<()>
+where
+    W: io::Write,
+    S: AsRef<str>,
+{
+    if put_class(w, ctx, class)?.is_none() {
+        put_class_define(w, fields)?;
+        put_class(w, ctx, class)?;
+    }
+
     Ok(())
 }
 
@@ -696,6 +765,50 @@ mod tests {
                 &s
             );
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_object() -> io::Result<()> {
+        init();
+
+        let mut b = vec![];
+        let mut ctx = Context::default();
+
+        begin_object(
+            &mut b,
+            &mut ctx,
+            "com.hessian2o3.User",
+            &["id", "name", "age", "home", "company"],
+        )?;
+
+        put_i64(&mut b, 1234)?;
+        put_str(&mut b, "杨幂")?;
+        put_i32(&mut b, 18)?;
+
+        begin_object(
+            &mut b,
+            &mut ctx,
+            "com.hessian2o3.Address",
+            &["city", "zipcode"],
+        )?;
+        put_str(&mut b, "Shanghai")?;
+        put_str(&mut b, "200000")?;
+
+        begin_object(
+            &mut b,
+            &mut ctx,
+            "com.hessian2o3.Address",
+            &["city", "zipcode"],
+        )?;
+        put_str(&mut b, "Beijing")?;
+        put_str(&mut b, "100000")?;
+
+        assert_eq!(
+            "4313636f6d2e6865737369616e326f332e5573657295026964046e616d650361676504686f6d6507636f6d70616e7960fcd202e69da8e5b982a24316636f6d2e6865737369616e326f332e41646472657373920463697479077a6970636f646561085368616e676861690632303030303061074265696a696e6706313030303030",
+            hex::encode(&b)
+        );
 
         Ok(())
     }
