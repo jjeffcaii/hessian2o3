@@ -22,7 +22,7 @@ pub(crate) mod serde;
 pub(crate) mod value;
 
 pub use error::Error;
-pub use hessian::HessianSerialize;
+pub use hessian::{HessianSerialize, hessian_to_vec, hessian_to_writer};
 pub use hessian2o3_derive::HessianObject;
 
 pub type Result<T> = std::result::Result<T, error::Error>;

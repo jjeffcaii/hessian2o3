@@ -112,6 +112,20 @@ impl<T: HessianSerialize> HessianSerialize for Vec<T> {
     }
 }
 
+pub fn hessian_to_writer<W: io::Write, T: HessianSerialize>(
+    writer: &mut W,
+    value: &T,
+) -> crate::Result<()> {
+    let mut ctx = Context::default();
+    value.hessian_serialize(writer, &mut ctx).map_err(crate::Error::IO)
+}
+
+pub fn hessian_to_vec<T: HessianSerialize>(value: &T) -> crate::Result<Vec<u8>> {
+    let mut buf = Vec::with_capacity(128);
+    hessian_to_writer(&mut buf, value)?;
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +172,41 @@ mod tests {
         // Vec<T: HessianSerialize>
         assert_eq!("78", hex(&Vec::<i32>::new()));
         assert_eq!("7b919293", hex(&vec![1i32, 2, 3]));
+    }
+
+    #[test]
+    fn test_manual_object() {
+        // Manually implement HessianSerialize for a Point struct to verify
+        // hessian_to_vec produces the correct object encoding.
+        struct Point { x: i32, y: i32 }
+
+        impl HessianSerialize for Point {
+            fn hessian_serialize<W: io::Write>(
+                &self,
+                w: &mut W,
+                ctx: &mut Context,
+            ) -> io::Result<()> {
+                encode::begin_object(w, ctx, "com.example.Point", &["x", "y"])?;
+                self.x.hessian_serialize(w, ctx)?;
+                self.y.hessian_serialize(w, ctx)?;
+                Ok(())
+            }
+        }
+
+        // Expected byte-by-byte:
+        //  43               C (class definition)
+        //  11               17 chars (direct string)
+        //  636f6d2e6578616d706c652e506f696e74  "com.example.Point"
+        //  92               put_i32(2) = 0x90+2 (field count)
+        //  01 78            "x" (1 char)
+        //  01 79            "y" (1 char)
+        //  60               BC_OBJECT_DIRECT + 0 (ref 0)
+        //  91               put_i32(1)
+        //  92               put_i32(2)
+        let bytes = crate::hessian_to_vec(&Point { x: 1, y: 2 }).unwrap();
+        assert_eq!(
+            "4311636f6d2e6578616d706c652e506f696e749201780179609192",
+            hex::encode(&bytes)
+        );
     }
 }
