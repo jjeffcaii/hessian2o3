@@ -14,13 +14,16 @@ pub(crate) mod cachestr {
     include!(concat!(env!("OUT_DIR"), "/cachestr.rs"));
 }
 
-pub(crate) mod encode;
+pub mod encode;
 pub(crate) mod error;
+pub mod hessian;
 pub(crate) mod ser;
 pub(crate) mod serde;
 pub(crate) mod value;
 
 pub use error::Error;
+pub use hessian::HessianSerialize;
+pub use hessian2o3_derive::HessianObject;
 
 pub type Result<T> = std::result::Result<T, error::Error>;
 

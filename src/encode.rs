@@ -54,12 +54,12 @@ const BC_OBJECT_DIRECT: u8 = 0x60;
 const OBJECT_DIRECT_MAX: usize = 0x0f;
 
 #[derive(Debug, Default)]
-pub(crate) struct Context {
+pub struct Context {
     class_refs: SmallVec<[Cachestr; 16]>,
 }
 
 #[inline]
-pub(crate) fn put_null<W>(w: &mut W) -> io::Result<()>
+pub fn put_null<W>(w: &mut W) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -108,7 +108,7 @@ where
 }
 
 #[inline]
-pub(crate) fn put_i32<W>(w: &mut W, value: i32) -> io::Result<()>
+pub fn put_i32<W>(w: &mut W, value: i32) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -138,7 +138,7 @@ where
 }
 
 #[inline]
-pub(crate) fn put_i64<W>(w: &mut W, value: i64) -> io::Result<()>
+pub fn put_i64<W>(w: &mut W, value: i64) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -175,7 +175,7 @@ where
 }
 
 #[inline]
-pub(crate) fn put_bool<W>(w: &mut W, value: bool) -> io::Result<()>
+pub fn put_bool<W>(w: &mut W, value: bool) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -185,7 +185,7 @@ where
 }
 
 #[inline]
-pub(crate) fn put_f64<W>(w: &mut W, v: f64) -> io::Result<()>
+pub fn put_f64<W>(w: &mut W, v: f64) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -254,7 +254,7 @@ where
 }
 
 #[inline]
-pub(crate) fn put_str<W>(w: &mut W, s: &str) -> io::Result<()>
+pub fn put_str<W>(w: &mut W, s: &str) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -295,7 +295,7 @@ where
     Ok(())
 }
 
-pub(crate) fn begin_list<W>(w: &mut W, typ: Option<&str>, length: usize) -> io::Result<()>
+pub fn begin_list<W>(w: &mut W, typ: Option<&str>, length: usize) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -391,7 +391,7 @@ where
     Ok(())
 }
 
-pub(crate) fn begin_object<W, S>(
+pub fn begin_object<W, S>(
     w: &mut W,
     ctx: &mut Context,
     class: &str,
