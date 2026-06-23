@@ -107,7 +107,11 @@ fn test_nested_objects_match_encode_test() {
 
     // The Address class definition (43 16 "com.hessian2o3.Address" ...) must appear exactly once.
     let addr_class_def = "4316636f6d2e6865737369616e326f332e41646472657373";
-    assert_eq!(1, s.matches(addr_class_def).count(), "Address class def must appear exactly once");
+    assert_eq!(
+        1,
+        s.matches(addr_class_def).count(),
+        "Address class def must appear exactly once"
+    );
 
     // The second Address instance must start with object-ref 0x61 (not a new C definition).
     // Both Address instances write 0x61; count must be 2.
@@ -117,7 +121,10 @@ fn test_nested_objects_match_encode_test() {
         .match_indices(addr_ref)
         .filter(|(i, _)| *i > s.find(addr_class_def).unwrap())
         .count();
-    assert!(count >= 2, "Expected at least 2 address object refs after class def, got {count}");
+    assert!(
+        count >= 2,
+        "Expected at least 2 address object refs after class def, got {count}"
+    );
 }
 
 #[test]
@@ -141,7 +148,10 @@ fn test_option_and_vec_fields() {
     // null appears
     assert!(s.contains("4e"), "None should encode as null (4e)");
     // list [1,2,3] appears: 7b = BC_LIST_DIRECT_UNTYPED+3, 91 92 93 = 1,2,3
-    assert!(s.contains("7b919293"), "Vec<i32> [1,2,3] should encode as 7b919293");
+    assert!(
+        s.contains("7b919293"),
+        "Vec<i32> [1,2,3] should encode as 7b919293"
+    );
 
     // Some field
     let c2 = Container {

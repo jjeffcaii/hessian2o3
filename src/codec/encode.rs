@@ -1,69 +1,13 @@
+use super::{misc::*, Context};
 use crate::cachestr::Cachestr;
-use smallvec::SmallVec;
 use std::{io, time::SystemTime};
-
-const BC_MAP: u8 = b'M';
-const BC_MAP_UNTYPED: u8 = b'H';
-
-const BC_END: u8 = b'Z';
-
-const BC_LIST_DIRECT: u8 = 0x70;
-const BC_LIST_DIRECT_UNTYPED: u8 = 0x78;
-#[allow(dead_code)]
-const BC_LIST_VARIABLE: u8 = 0x55;
-const BC_LIST_FIXED: u8 = b'V';
-#[allow(dead_code)]
-const BC_LIST_VARIABLE_UNTYPED: u8 = 0x57;
-const BC_LIST_FIXED_UNTYPED: u8 = 0x58;
-
-const LIST_DIRECT_MAX: usize = 7;
-
-const TRUE: u8 = b'T';
-const FALSE: u8 = b'F';
-
-const BC_DATE_MINUTE: u8 = 0x4b;
-const BC_DATE: u8 = 0x4a;
-const BC_LONG_ZERO: u8 = 0xe0;
-const BC_LONG_BYTE_ZERO: u8 = 0xf8;
-const BC_LONG_SHORT_ZERO: u8 = 0x3c;
-const BC_INT_ZERO: u8 = 0x90;
-const BC_INT_BYTE_ZERO: u8 = 0xc8;
-
-const BC_LONG_INT: u8 = 0x59;
-
-const BC_DOUBLE_ZERO: u8 = 0x5b;
-const BC_DOUBLE_ONE: u8 = 0x5c;
-const BC_DOUBLE_BYTE: u8 = 0x5d;
-const BC_DOUBLE_SHORT: u8 = 0x5e;
-const BC_DOUBLE_MILL: u8 = 0x5f;
-
-const BC_STRING_DIRECT: u8 = 0x00;
-const BC_STRING_SHORT: u8 = 0x30;
-const BC_STRING_FINAL: u8 = b'S'; // final string
-const BC_STRING_CHUNK: u8 = b'R'; // non-final string
-
-const BC_BINARY: u8 = b'B'; // final chunk
-const BC_BINARY_CHUNK: u8 = b'A'; // non-final chunk
-const BC_BINARY_DIRECT: u8 = 0x20; // 1-byte length binary
-const BC_BINARY_SHORT: u8 = 0x34; // 2-byte length binary
-
-const BINARY_DIRECT_MAX: usize = 0x0f;
-const BINARY_SHORT_MAX: usize = 0x3ff; // 0-1023 binary
-
-const BC_OBJECT_DIRECT: u8 = 0x60;
-const OBJECT_DIRECT_MAX: usize = 0x0f;
-
-#[derive(Debug, Default)]
-pub struct Context {
-    class_refs: SmallVec<[Cachestr; 16]>,
-}
 
 #[inline]
 pub fn put_null<W>(w: &mut W) -> io::Result<()>
 where
     W: io::Write,
 {
-    w.write_all(&[b'N'])?;
+    w.write_all(&[BC_NULL])?;
     Ok(())
 }
 
@@ -116,8 +60,6 @@ where
     const BYTE: (i32, i32) = (-2048, 2047);
     const SHORT: (i32, i32) = (-0x40000, 0x3ffff);
 
-    const BC_INT_SHORT_ZERO: u8 = 0xd4;
-
     if DIRECT.0 <= value && value <= DIRECT.1 {
         w.write_all(&[((BC_INT_ZERO as i32) + value) as u8])?;
     } else if BYTE.0 <= value && value <= BYTE.1 {
@@ -130,7 +72,7 @@ where
         let third = (value & 0xff) as u8;
         w.write_all(&[first, second, third])?;
     } else {
-        w.write_all(&[b'I'])?;
+        w.write_all(&[BC_INT])?;
         w.write_all(&value.to_be_bytes())?;
     }
 
@@ -167,7 +109,7 @@ where
         w.write_all(&[BC_LONG_INT])?;
         w.write_all(&(value as i32).to_be_bytes())?;
     } else {
-        w.write_all(&[b'L'])?;
+        w.write_all(&[BC_LONG])?;
         w.write_all(&value.to_be_bytes())?;
     }
 
@@ -179,7 +121,7 @@ pub fn put_bool<W>(w: &mut W, value: bool) -> io::Result<()>
 where
     W: io::Write,
 {
-    let byte = if value { TRUE } else { FALSE };
+    let byte = if value { BC_BOOL_TRUE } else { BC_BOOL_FALSE };
     w.write_all(&[byte])?;
     Ok(())
 }
@@ -222,7 +164,7 @@ where
         }
     }
 
-    w.write_all(&[b'D'])?;
+    w.write_all(&[BC_DOUBLE])?;
     w.write_all(&v.to_bits().to_be_bytes())?;
     Ok(())
 }
@@ -281,8 +223,9 @@ where
     if tail <= STRING_DIRECT_MAX {
         w.write_all(&[BC_STRING_DIRECT + tail as u8])?;
     } else if tail <= STRING_SHORT_MAX {
-        let first = (BC_STRING_SHORT as usize) + tail >> 8;
-        w.write_all(&[first as u8, (0xff & tail) as u8])?;
+        let first = BC_STRING_SHORT + (((tail >> 8) & 0xff) as u8);
+        let second = (tail & 0xff) as u8;
+        w.write_all(&[first, second])?;
     } else {
         w.write_all(&[BC_STRING_FINAL])?;
         w.write_all(&(tail as u16).to_be_bytes())?;
@@ -362,13 +305,13 @@ where
         if i <= OBJECT_DIRECT_MAX {
             w.write_all(&[BC_OBJECT_DIRECT + i as u8])?;
         } else {
-            w.write_all(&[b'O'])?;
+            w.write_all(&[BC_OBJECT])?;
             put_i32(w, i as i32)?;
         }
         return Ok(Some(i));
     }
 
-    w.write_all(&[b'C'])?;
+    w.write_all(&[BC_CLASS])?;
     put_str(w, class.as_ref())?;
 
     // append class ref
@@ -391,12 +334,7 @@ where
     Ok(())
 }
 
-pub fn begin_object<W, S>(
-    w: &mut W,
-    ctx: &mut Context,
-    class: &str,
-    fields: &[S],
-) -> io::Result<()>
+pub fn begin_object<W, S>(w: &mut W, ctx: &mut Context, class: &str, fields: &[S]) -> io::Result<()>
 where
     W: io::Write,
     S: AsRef<str>,
@@ -496,6 +434,9 @@ mod tests {
 
         assert_eq!("d00000", to_hex(-262144)?);
         assert_eq!("d7ffff", to_hex(262143)?);
+
+        assert_eq!("497fffffff", to_hex(i32::MAX)?);
+        assert_eq!("4980000000", to_hex(i32::MIN)?);
 
         Ok(())
     }

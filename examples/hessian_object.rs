@@ -1,4 +1,4 @@
-use hessian2o3::{hessian_to_vec, HessianObject};
+use hessian2o3::{HessianObject, hessian_to_vec};
 
 // ── Section 1: simple struct ──────────────────────────────────────────────
 #[derive(HessianObject)]

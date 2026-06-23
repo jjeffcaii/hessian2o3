@@ -6,6 +6,9 @@
 #![allow(clippy::from_over_into)]
 #![allow(clippy::module_inception)]
 
+#[cfg(test)]
+#[macro_use]
+extern crate assert_matches;
 #[macro_use]
 extern crate log;
 
@@ -14,7 +17,7 @@ pub(crate) mod cachestr {
     include!(concat!(env!("OUT_DIR"), "/cachestr.rs"));
 }
 
-pub mod encode;
+pub mod codec;
 pub(crate) mod error;
 pub mod hessian;
 pub(crate) mod ser;

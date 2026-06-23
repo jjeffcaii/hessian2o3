@@ -1,83 +1,79 @@
-use crate::encode::{self, Context};
+use crate::codec::{self, Context};
 use std::io;
 
 pub trait HessianSerialize {
-    fn hessian_serialize<W: io::Write>(
-        &self,
-        w: &mut W,
-        ctx: &mut Context,
-    ) -> io::Result<()>;
+    fn hessian_serialize<W: io::Write>(&self, w: &mut W, ctx: &mut Context) -> io::Result<()>;
 }
 
 impl HessianSerialize for bool {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_bool(w, *self)
+        codec::put_bool(w, *self)
     }
 }
 
 impl HessianSerialize for i8 {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_i32(w, *self as i32)
+        codec::put_i32(w, *self as i32)
     }
 }
 
 impl HessianSerialize for i16 {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_i32(w, *self as i32)
+        codec::put_i32(w, *self as i32)
     }
 }
 
 impl HessianSerialize for i32 {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_i32(w, *self)
+        codec::put_i32(w, *self)
     }
 }
 
 impl HessianSerialize for i64 {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_i64(w, *self)
+        codec::put_i64(w, *self)
     }
 }
 
 impl HessianSerialize for u8 {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_i32(w, *self as i32)
+        codec::put_i32(w, *self as i32)
     }
 }
 
 impl HessianSerialize for u16 {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_i32(w, *self as i32)
+        codec::put_i32(w, *self as i32)
     }
 }
 
 impl HessianSerialize for u32 {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_i64(w, *self as i64)
+        codec::put_i64(w, *self as i64)
     }
 }
 
 impl HessianSerialize for u64 {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_i64(w, *self as i64)
+        codec::put_i64(w, *self as i64)
     }
 }
 
 impl HessianSerialize for f32 {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_f64(w, *self as f64)
+        codec::put_f64(w, *self as f64)
     }
 }
 
 impl HessianSerialize for f64 {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_f64(w, *self)
+        codec::put_f64(w, *self)
     }
 }
 
 impl HessianSerialize for str {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_str(w, self)
+        codec::put_str(w, self)
     }
 }
 
@@ -89,14 +85,14 @@ impl<T: HessianSerialize + ?Sized> HessianSerialize for &T {
 
 impl HessianSerialize for String {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, _ctx: &mut Context) -> io::Result<()> {
-        encode::put_str(w, self.as_str())
+        codec::put_str(w, self.as_str())
     }
 }
 
 impl<T: HessianSerialize> HessianSerialize for Option<T> {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, ctx: &mut Context) -> io::Result<()> {
         match self {
-            None => encode::put_null(w),
+            None => codec::put_null(w),
             Some(v) => v.hessian_serialize(w, ctx),
         }
     }
@@ -104,7 +100,7 @@ impl<T: HessianSerialize> HessianSerialize for Option<T> {
 
 impl<T: HessianSerialize> HessianSerialize for Vec<T> {
     fn hessian_serialize<W: io::Write>(&self, w: &mut W, ctx: &mut Context) -> io::Result<()> {
-        encode::begin_list(w, None, self.len())?;
+        codec::begin_list(w, None, self.len())?;
         for item in self {
             item.hessian_serialize(w, ctx)?;
         }
@@ -117,7 +113,9 @@ pub fn hessian_to_writer<W: io::Write, T: HessianSerialize>(
     value: &T,
 ) -> crate::Result<()> {
     let mut ctx = Context::default();
-    value.hessian_serialize(writer, &mut ctx).map_err(crate::Error::IO)
+    value
+        .hessian_serialize(writer, &mut ctx)
+        .map_err(crate::Error::IO)
 }
 
 pub fn hessian_to_vec<T: HessianSerialize>(value: &T) -> crate::Result<Vec<u8>> {
@@ -129,7 +127,7 @@ pub fn hessian_to_vec<T: HessianSerialize>(value: &T) -> crate::Result<Vec<u8>> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encode::Context;
+    use crate::codec::Context;
 
     fn hex<T: HessianSerialize>(v: &T) -> String {
         let mut buf = vec![];
@@ -178,7 +176,10 @@ mod tests {
     fn test_manual_object() {
         // Manually implement HessianSerialize for a Point struct to verify
         // hessian_to_vec produces the correct object encoding.
-        struct Point { x: i32, y: i32 }
+        struct Point {
+            x: i32,
+            y: i32,
+        }
 
         impl HessianSerialize for Point {
             fn hessian_serialize<W: io::Write>(
@@ -186,7 +187,7 @@ mod tests {
                 w: &mut W,
                 ctx: &mut Context,
             ) -> io::Result<()> {
-                encode::begin_object(w, ctx, "com.example.Point", &["x", "y"])?;
+                codec::begin_object(w, ctx, "com.example.Point", &["x", "y"])?;
                 self.x.hessian_serialize(w, ctx)?;
                 self.y.hessian_serialize(w, ctx)?;
                 Ok(())
@@ -203,7 +204,7 @@ mod tests {
         //  60               BC_OBJECT_DIRECT + 0 (ref 0)
         //  91               put_i32(1)
         //  92               put_i32(2)
-        let bytes = crate::hessian_to_vec(&Point { x: 1, y: 2 }).unwrap();
+        let bytes = hessian_to_vec(&Point { x: 1, y: 2 }).unwrap();
         assert_eq!(
             "4311636f6d2e6578616d706c652e506f696e749201780179609192",
             hex::encode(&bytes)

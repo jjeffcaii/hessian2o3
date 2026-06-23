@@ -1,4 +1,4 @@
-use crate::encode;
+use crate::codec;
 use crate::error::Error;
 use serde::ser::{self, Serialize};
 use std::io;
@@ -12,112 +12,112 @@ pub trait Formatter {
     where
         W: io::Write,
     {
-        encode::put_null(w)
+        codec::put_null(w)
     }
 
     fn put_null<W>(&mut self, w: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_null(w)
+        codec::put_null(w)
     }
 
     fn put_bool<W>(&mut self, w: &mut W, b: bool) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_bool(w, b)
+        codec::put_bool(w, b)
     }
 
     fn put_i8<W>(&mut self, w: &mut W, i: i8) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_i32(w, i as i32)
+        codec::put_i32(w, i as i32)
     }
 
     fn put_i16<W>(&mut self, w: &mut W, i: i16) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_i32(w, i as i32)
+        codec::put_i32(w, i as i32)
     }
 
     fn put_i32<W>(&mut self, w: &mut W, i: i32) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_i32(w, i)
+        codec::put_i32(w, i)
     }
 
     fn put_i64<W>(&mut self, w: &mut W, i: i64) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_i64(w, i)
+        codec::put_i64(w, i)
     }
 
     fn put_u8<W>(&mut self, w: &mut W, i: u8) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_i32(w, i as i32)
+        codec::put_i32(w, i as i32)
     }
 
     fn put_u16<W>(&mut self, w: &mut W, i: u16) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_i32(w, i as i32)
+        codec::put_i32(w, i as i32)
     }
 
     fn put_u32<W>(&mut self, w: &mut W, i: u32) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_i64(w, i as i64)
+        codec::put_i64(w, i as i64)
     }
 
     fn put_u64<W>(&mut self, w: &mut W, i: u64) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_i64(w, i as i64)
+        codec::put_i64(w, i as i64)
     }
 
     fn put_f32<W>(&mut self, w: &mut W, f: f32) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_f64(w, f as f64)
+        codec::put_f64(w, f as f64)
     }
 
     fn put_f64<W>(&mut self, w: &mut W, v: f64) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_f64(w, v)
+        codec::put_f64(w, v)
     }
 
     fn put_str<W>(&mut self, w: &mut W, s: &str) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_str(w, s)
+        codec::put_str(w, s)
     }
 
     fn put_bytes<W>(&mut self, w: &mut W, b: &[u8]) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::put_bytes(w, b)
+        codec::put_bytes(w, b)
     }
 
     fn begin_list<W>(&mut self, w: &mut W, n: Option<usize>) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::begin_list(w, None, n.unwrap_or(0))
+        codec::begin_list(w, None, n.unwrap_or(0))
     }
 
     fn begin_typed_list<W>(
@@ -129,28 +129,28 @@ pub trait Formatter {
     where
         W: io::Write,
     {
-        encode::begin_list(w, Some(class), length.unwrap_or(0))
+        codec::begin_list(w, Some(class), length.unwrap_or(0))
     }
 
     fn begin_map<W>(&mut self, w: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::begin_map(w, None)
+        codec::begin_map(w, None)
     }
 
     fn begin_typed_map<W>(&mut self, w: &mut W, class: &str) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::begin_map(w, Some(class))
+        codec::begin_map(w, Some(class))
     }
 
     fn end_compound<W>(&mut self, w: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
-        encode::end_map(w)
+        codec::end_map(w)
     }
 }
 
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn test_integers() {
-        // i32 compact encoding (matches encode::primitive tests)
+        // i32 compact encoding (matches codec::primitive tests)
         assert_eq!("90", to_hex(0i32));
         assert_eq!("bf", to_hex(47i32));
         assert_eq!("80", to_hex(-16i32));

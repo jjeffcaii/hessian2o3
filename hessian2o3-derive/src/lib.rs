@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, Data, DeriveInput, Error, Fields, Lit, Meta, MetaList, MetaNameValue,
-    NestedMeta,
+    Data, DeriveInput, Error, Fields, Lit, Meta, MetaList, MetaNameValue, NestedMeta,
+    parse_macro_input,
 };
 
 #[proc_macro_derive(HessianObject, attributes(hessian))]
@@ -26,14 +26,14 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 return Err(Error::new_spanned(
                     name,
                     "HessianObject only supports named-field structs",
-                ))
+                ));
             }
         },
         _ => {
             return Err(Error::new_spanned(
                 name,
                 "HessianObject only supports structs",
-            ))
+            ));
         }
     };
 
@@ -58,9 +58,9 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             fn hessian_serialize<W: ::std::io::Write>(
                 &self,
                 w: &mut W,
-                ctx: &mut ::hessian2o3::encode::Context,
+                ctx: &mut ::hessian2o3::codec::Context,
             ) -> ::std::io::Result<()> {
-                ::hessian2o3::encode::begin_object(
+                ::hessian2o3::codec::begin_object(
                     w,
                     ctx,
                     #class_name,
