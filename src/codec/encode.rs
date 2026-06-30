@@ -1,4 +1,4 @@
-use super::{misc::*, Context};
+use super::{Context, misc::*};
 use crate::cachestr::Cachestr;
 use std::{io, time::SystemTime};
 

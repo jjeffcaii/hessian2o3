@@ -16,9 +16,11 @@ smallvec = "1.15"
 string_cache = "0.9"
 thiserror = "2"
 hessian2o3-derive = { path = "hessian2o3-derive" }
+base64 = "0.22.1"
 
 [dev-dependencies]
 pretty_env_logger = "0.5"
 chrono = "0.4.45"
-hex = "0.4.3"
 assert_matches = "1.5"
+serde_json = "1"
+hex = "0.4.3"

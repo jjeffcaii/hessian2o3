@@ -22,7 +22,7 @@ pub(crate) mod error;
 pub mod hessian;
 pub(crate) mod ser;
 pub(crate) mod serde;
-pub(crate) mod value;
+pub mod value;
 
 pub use error::Error;
 pub use hessian::{HessianSerialize, hessian_to_vec, hessian_to_writer};
