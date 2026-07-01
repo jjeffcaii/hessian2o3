@@ -122,6 +122,7 @@ impl<'a> Display for Type<'a> {
             },
             Value::List(_) => f.write_str("list"),
             Value::Map(_) => f.write_str("map"),
+            Value::Object(_) => f.write_str("object"),
         }
     }
 }

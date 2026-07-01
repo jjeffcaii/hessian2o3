@@ -1,6 +1,6 @@
-use hessian2o3::{HessianObject, hessian_to_vec};
+use hessian2o3::{Hessian, hessian_to_vec};
 
-#[derive(HessianObject)]
+#[derive(Hessian)]
 #[hessian(class = "com.example.Point")]
 struct Point {
     x: i32,
@@ -18,7 +18,7 @@ fn test_derive_simple_struct() {
     );
 }
 
-#[derive(HessianObject)]
+#[derive(Hessian)]
 #[hessian(class = "com.hessian2o3.User")]
 struct User {
     #[hessian(rename = "id")]
@@ -53,7 +53,7 @@ fn test_derive_with_rename() {
     );
 }
 
-#[derive(HessianObject)]
+#[derive(Hessian)]
 #[hessian(class = "com.hessian2o3.Address")]
 struct Address {
     #[hessian(rename = "city")]
@@ -62,7 +62,7 @@ struct Address {
     zipcode: String,
 }
 
-#[derive(HessianObject)]
+#[derive(Hessian)]
 #[hessian(class = "com.hessian2o3.UserFull")]
 struct UserFull {
     #[hessian(rename = "id")]
@@ -129,7 +129,7 @@ fn test_nested_objects_match_encode_test() {
 
 #[test]
 fn test_option_and_vec_fields() {
-    #[derive(HessianObject)]
+    #[derive(Hessian)]
     #[hessian(class = "com.example.Container")]
     struct Container {
         #[hessian(rename = "maybeVal")]

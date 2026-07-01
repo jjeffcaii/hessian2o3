@@ -1,63 +1,11 @@
+use super::list::List;
 use super::map::Map;
+use super::object::Object;
+use crate::misc::encode_base64;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::time;
 use std::time::SystemTime;
-
-#[derive(Debug, PartialEq, Default)]
-pub struct List {
-    l: Vec<Value>,
-}
-
-impl List {
-    #[inline]
-    pub fn new() -> Self {
-        Self { l: Vec::new() }
-    }
-
-    #[inline]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            l: Vec::with_capacity(capacity),
-        }
-    }
-
-    #[inline]
-    pub fn get(&self, i: usize) -> Option<&Value> {
-        self.l.get(i)
-    }
-
-    #[inline]
-    pub fn get_mut(&mut self, i: usize) -> Option<&mut Value> {
-        self.l.get_mut(i)
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.l.len()
-    }
-}
-
-impl Display for List {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("[")?;
-
-        let mut iter = self.l.iter();
-
-        if let Some(first) = iter.next() {
-            Display::fmt(&first, f)?;
-        }
-
-        for next in iter {
-            f.write_str(", ")?;
-            Display::fmt(&next, f)?;
-        }
-
-        f.write_str("]")?;
-
-        Ok(())
-    }
-}
 
 pub enum PrimitiveValue {
     Bool(bool),
@@ -194,6 +142,7 @@ pub enum Value {
     Primitive(PrimitiveValue),
     List(List),
     Map(Map),
+    Object(Object),
 }
 
 impl Display for Value {
@@ -203,6 +152,7 @@ impl Display for Value {
             Value::Primitive(v) => Display::fmt(v, f),
             Value::List(v) => Display::fmt(v, f),
             Value::Map(v) => Display::fmt(v, f),
+            Value::Object(o) => Display::fmt(o, f),
         }
     }
 }
@@ -214,6 +164,7 @@ impl Debug for Value {
             Value::Primitive(p) => Debug::fmt(p, f),
             Value::List(l) => Debug::fmt(l, f),
             Value::Map(m) => Debug::fmt(m, f),
+            Value::Object(o) => Debug::fmt(o, f),
         }
     }
 }
@@ -238,7 +189,7 @@ impl From<Vec<u8>> for Value {
 
 impl From<Vec<Value>> for Value {
     fn from(value: Vec<Value>) -> Self {
-        Self::List(List { l: value })
+        Self::List(List::from(value))
     }
 }
 
@@ -296,13 +247,8 @@ impl From<SystemTime> for Value {
     }
 }
 
-fn encode_base64(b: &[u8]) -> String {
-    use base64::{Engine as _, alphabet, engine};
-
-    const G: engine::GeneralPurpose =
-        engine::GeneralPurpose::new(&alphabet::STANDARD, engine::general_purpose::PAD);
-
-    let mut buf = String::with_capacity(b.len() * 3 / 4);
-    G.encode_string(b, &mut buf);
-    buf
+impl From<Object> for Value {
+    fn from(value: Object) -> Self {
+        Self::Object(value)
+    }
 }

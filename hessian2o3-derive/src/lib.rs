@@ -5,7 +5,7 @@ use syn::{
     parse_macro_input,
 };
 
-#[proc_macro_derive(HessianObject, attributes(hessian))]
+#[proc_macro_derive(Hessian, attributes(hessian))]
 pub fn derive_hessian_object(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     match expand(input) {
@@ -25,15 +25,12 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             _ => {
                 return Err(Error::new_spanned(
                     name,
-                    "HessianObject only supports named-field structs",
+                    "Hessian only supports named-field structs",
                 ));
             }
         },
         _ => {
-            return Err(Error::new_spanned(
-                name,
-                "HessianObject only supports structs",
-            ));
+            return Err(Error::new_spanned(name, "Hessian only supports structs"));
         }
     };
 
@@ -94,7 +91,7 @@ fn extract_class(input: &DeriveInput) -> syn::Result<String> {
     }
     Err(Error::new_spanned(
         &input.ident,
-        "HessianObject requires #[hessian(class = \"...\")]",
+        "Hessian requires #[hessian(class = \"...\")]",
     ))
 }
 

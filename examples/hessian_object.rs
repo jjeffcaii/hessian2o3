@@ -1,7 +1,7 @@
-use hessian2o3::{HessianObject, hessian_to_vec};
+use hessian2o3::{Hessian, hessian_to_vec};
 
 // ── Section 1: simple struct ──────────────────────────────────────────────
-#[derive(HessianObject)]
+#[derive(Hessian)]
 #[hessian(class = "com.example.User")]
 struct User {
     id: i64,
@@ -10,14 +10,14 @@ struct User {
 }
 
 // ── Section 2: nested objects ─────────────────────────────────────────────
-#[derive(HessianObject)]
+#[derive(Hessian)]
 #[hessian(class = "com.example.Address")]
 struct Address {
     city: String,
     zipcode: String,
 }
 
-#[derive(HessianObject)]
+#[derive(Hessian)]
 #[hessian(class = "com.example.UserWithAddress")]
 struct UserWithAddress {
     id: i64,
@@ -27,7 +27,7 @@ struct UserWithAddress {
 }
 
 // ── Section 3: field rename (Rust snake_case → Java camelCase) ───────────
-#[derive(HessianObject)]
+#[derive(Hessian)]
 #[hessian(class = "com.example.Product")]
 struct Product {
     #[hessian(rename = "productId")]

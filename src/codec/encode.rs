@@ -1,5 +1,4 @@
-use super::{Context, misc::*};
-use crate::cachestr::Cachestr;
+use super::{Context, tags::*};
 use std::{io, time::SystemTime};
 
 #[inline]
@@ -227,7 +226,7 @@ where
         let second = (tail & 0xff) as u8;
         w.write_all(&[first, second])?;
     } else {
-        w.write_all(&[BC_STRING_FINAL])?;
+        w.write_all(&[BC_STRING])?;
         w.write_all(&(tail as u16).to_be_bytes())?;
     }
 
@@ -293,55 +292,42 @@ where
     Ok(())
 }
 
-#[inline]
-pub(crate) fn put_class<W>(w: &mut W, ctx: &mut Context, class: &str) -> io::Result<Option<usize>>
-where
-    W: io::Write,
-{
-    let length = ctx.class_refs.len();
-    let class = Cachestr::from(class);
-
-    if let Some(i) = ctx.class_refs.iter().position(|x| *x == class) {
-        if i <= OBJECT_DIRECT_MAX {
-            w.write_all(&[BC_OBJECT_DIRECT + i as u8])?;
-        } else {
-            w.write_all(&[BC_OBJECT])?;
-            put_i32(w, i as i32)?;
-        }
-        return Ok(Some(i));
-    }
-
-    w.write_all(&[BC_CLASS])?;
-    put_str(w, class.as_ref())?;
-
-    // append class ref
-    ctx.class_refs.push(class);
-
-    Ok(None)
-}
-
-pub(crate) fn put_class_define<W, S>(w: &mut W, fields: &[S]) -> io::Result<()>
-where
-    W: io::Write,
-    S: AsRef<str>,
-{
-    put_i32(w, fields.len() as i32)?;
-
-    for field in fields {
-        put_str(w, field.as_ref())?;
-    }
-
-    Ok(())
-}
-
 pub fn begin_object<W, S>(w: &mut W, ctx: &mut Context, class: &str, fields: &[S]) -> io::Result<()>
 where
     W: io::Write,
     S: AsRef<str>,
 {
-    if put_class(w, ctx, class)?.is_none() {
-        put_class_define(w, fields)?;
-        put_class(w, ctx, class)?;
+    let reference = match ctx.put_class_define(class, fields) {
+        Ok(i) => {
+            debug!("write class#{} '{}'", i, class);
+
+            // write class
+            w.write_all(&[BC_CLASS])?;
+            put_str(w, class.as_ref())?;
+
+            put_i32(w, fields.len() as i32)?;
+
+            for field in fields {
+                put_str(w, field.as_ref())?;
+            }
+
+            i
+        }
+        Err(i) => {
+            debug!("use existing class#{} '{}'", i, class);
+            i
+        }
+    };
+
+    // write reference
+
+    debug!("write class-ref '{}': index={}", class, reference);
+
+    if reference <= OBJECT_DIRECT_MAX {
+        w.write_all(&[BC_OBJECT_DIRECT + (reference as u8)])?;
+    } else {
+        w.write_all(&[BC_OBJECT])?;
+        put_i32(w, reference as i32)?;
     }
 
     Ok(())
@@ -713,6 +699,26 @@ mod tests {
     #[test]
     fn test_object() -> io::Result<()> {
         init();
+        let mut b = vec![];
+        let mut ctx = Context::default();
+
+        begin_object(&mut b, &mut ctx, "com.example.User", &["id", "name", "age"])?;
+
+        put_i64(&mut b, 1234)?;
+        put_str(&mut b, "杨幂")?;
+        put_i32(&mut b, 18)?;
+
+        assert_eq!(
+            "4310636f6d2e6578616d706c652e5573657293026964046e616d650361676560fcd202e69da8e5b982a2",
+            hex::encode(&b)
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_nested_object() -> io::Result<()> {
+        init();
 
         let mut b = vec![];
         let mut ctx = Context::default();
@@ -720,7 +726,7 @@ mod tests {
         begin_object(
             &mut b,
             &mut ctx,
-            "com.hessian2o3.User",
+            "com.example.User",
             &["id", "name", "age", "home", "company"],
         )?;
 
@@ -731,7 +737,7 @@ mod tests {
         begin_object(
             &mut b,
             &mut ctx,
-            "com.hessian2o3.Address",
+            "com.example.Address",
             &["city", "zipcode"],
         )?;
         put_str(&mut b, "Shanghai")?;
@@ -740,14 +746,14 @@ mod tests {
         begin_object(
             &mut b,
             &mut ctx,
-            "com.hessian2o3.Address",
+            "com.example.Address",
             &["city", "zipcode"],
         )?;
         put_str(&mut b, "Beijing")?;
         put_str(&mut b, "100000")?;
 
         assert_eq!(
-            "4313636f6d2e6865737369616e326f332e5573657295026964046e616d650361676504686f6d6507636f6d70616e7960fcd202e69da8e5b982a24316636f6d2e6865737369616e326f332e41646472657373920463697479077a6970636f646561085368616e676861690632303030303061074265696a696e6706313030303030",
+            "4310636f6d2e6578616d706c652e5573657295026964046e616d650361676504686f6d6507636f6d70616e7960fcd202e69da8e5b982a24313636f6d2e6578616d706c652e41646472657373920463697479077a6970636f646561085368616e676861690632303030303061074265696a696e6706313030303030",
             hex::encode(&b)
         );
 

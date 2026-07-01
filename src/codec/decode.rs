@@ -1,21 +1,14 @@
-use super::misc::*;
+use super::tags::*;
 use crate::cachestr::Cachestr;
-use crate::value::{Map, PrimitiveValue, Value};
+use crate::codec::{Context, Fields};
+use crate::misc;
+use crate::value::{Map, Object, PrimitiveValue, Value};
+use std::arch::aarch64::vget_high_u16;
 use std::collections::HashMap;
 use std::{io, time};
 
 #[inline]
-fn millis_to_system_time(millis: i64) -> time::SystemTime {
-    if millis >= 0 {
-        time::SystemTime::UNIX_EPOCH + time::Duration::from_millis(millis as u64)
-    } else {
-        // process timestamp before 1970
-        time::UNIX_EPOCH - time::Duration::from_millis(millis.unsigned_abs())
-    }
-}
-
-#[inline]
-fn read_binary<R>(r: &mut R, dst: &mut Vec<u8>, n: usize) -> io::Result<()>
+fn read_binary<R>(_ctx: &mut Context, r: &mut R, dst: &mut Vec<u8>, n: usize) -> io::Result<()>
 where
     R: io::Read,
 {
@@ -25,11 +18,17 @@ where
 }
 
 #[inline]
-fn read_binary_chunked<R>(r: &mut R, dst: &mut Vec<u8>, n: usize, is_final: bool) -> io::Result<()>
+fn read_binary_chunked<R>(
+    ctx: &mut Context,
+    r: &mut R,
+    dst: &mut Vec<u8>,
+    n: usize,
+    is_final: bool,
+) -> io::Result<()>
 where
     R: io::Read,
 {
-    read_binary(r, dst, n)?;
+    read_binary(ctx, r, dst, n)?;
     if is_final {
         return Ok(());
     }
@@ -43,7 +42,7 @@ where
                 let low = read_u8(r)? as usize;
                 (high << 8) + low
             };
-            read_binary_chunked(r, dst, length, false)
+            read_binary_chunked(ctx, r, dst, length, false)
         }
         BC_BINARY => {
             let length = {
@@ -51,11 +50,11 @@ where
                 let low = read_u8(r)? as usize;
                 (high << 8) + low
             };
-            read_binary_chunked(r, dst, length, true)
+            read_binary_chunked(ctx, r, dst, length, true)
         }
         0x20..=0x2f => {
             let length = (code - 0x20) as usize;
-            read_binary_chunked(r, dst, length, true)
+            read_binary_chunked(ctx, r, dst, length, true)
         }
         0x34..=0x37 => {
             let length = {
@@ -64,7 +63,7 @@ where
 
                 (high << 8) + low
             };
-            read_binary_chunked(r, dst, length, true)
+            read_binary_chunked(ctx, r, dst, length, true)
         }
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -130,7 +129,7 @@ where
 
             read_utf8_chunked(r, dst, length, false)
         }
-        BC_STRING_FINAL => {
+        BC_STRING => {
             let length = {
                 let high = read_u8(r)? as usize;
                 let low = read_u8(r)? as usize;
@@ -219,7 +218,7 @@ where
 }
 
 #[inline]
-fn read_type<R>(r: &mut R) -> io::Result<Option<Cachestr>>
+fn read_string<R>(r: &mut R) -> io::Result<Option<Cachestr>>
 where
     R: io::Read,
 {
@@ -255,7 +254,7 @@ where
 
             Some(Cachestr::from(s))
         }
-        BC_STRING_FINAL => {
+        BC_STRING => {
             let length = {
                 let high = read_u8(r)? as usize;
                 let low = read_u8(r)? as usize;
@@ -274,18 +273,18 @@ where
 }
 
 #[inline]
-fn read_list<R>(r: &mut R, dst: &mut Vec<Value>, n: usize) -> io::Result<()>
+fn read_list<R>(ctx: &mut Context, r: &mut R, dst: &mut Vec<Value>, n: usize) -> io::Result<()>
 where
     R: io::Read,
 {
     for _ in 0..n {
-        let next = get_value(r)?;
+        let next = get_value(ctx, r)?;
         dst.push(next);
     }
     Ok(())
 }
 
-fn read_value<R>(r: &mut R, tag: u8) -> io::Result<Option<Value>>
+fn read_value<R>(ctx: &mut Context, r: &mut R, tag: u8) -> io::Result<Option<Value>>
 where
     R: io::Read,
 {
@@ -335,7 +334,7 @@ where
 
             let mut b = Vec::<u8>::with_capacity(length + length / 2);
 
-            read_binary_chunked(r, &mut b, length, false)?;
+            read_binary_chunked(ctx, r, &mut b, length, false)?;
 
             Ok(Some(Value::from(b)))
         }
@@ -363,7 +362,7 @@ where
 
             Ok(Some(Value::from(s)))
         }
-        BC_STRING_FINAL => {
+        BC_STRING => {
             let length = {
                 let high = read_u8(r)? as usize;
                 let low = read_u8(r)? as usize;
@@ -467,19 +466,19 @@ where
         }
         BC_DATE => {
             let v = read_i64(r)?;
-            Ok(Some(Value::from(millis_to_system_time(v))))
+            Ok(Some(Value::from(misc::millis_to_system_time(v))))
         }
         BC_DATE_MINUTE => {
             let unix_mills = (read_i32(r)? as i64) * 60000i64;
-            Ok(Some(Value::from(millis_to_system_time(unix_mills))))
+            Ok(Some(Value::from(misc::millis_to_system_time(unix_mills))))
         }
         0x70..=0x77 => {
             let length = tag as usize - 0x70;
-            let class = read_type(r)?;
+            let class = read_string(r)?;
 
             info!("list class {:?}", class);
             let mut v = Vec::<Value>::with_capacity(length);
-            read_list(r, &mut v, length)?;
+            read_list(ctx, r, &mut v, length)?;
 
             Ok(Some(Value::from(v)))
         }
@@ -487,24 +486,75 @@ where
             let length = tag as usize - 0x78;
 
             let mut v = Vec::<Value>::with_capacity(length);
-            read_list(r, &mut v, length)?;
+            read_list(ctx, r, &mut v, length)?;
 
             Ok(Some(Value::from(v)))
         }
         BC_MAP_UNTYPED => {
             let mut m = Map::new();
-            read_untyped_map(r, &mut m)?;
+            read_map(ctx, r, &mut m)?;
             Ok(Some(Value::from(m)))
         }
         BC_MAP => {
-            todo!("typed map")
+            let mut m = Map::new();
+
+            if let Some(class) = read_string(r)? {
+                m.set_class(class);
+            }
+
+            read_map(ctx, r, &mut m)?;
+
+            Ok(Some(Value::from(m)))
         }
         BC_END => Ok(None),
+        BC_CLASS => {
+            let class = read_string(r)?.expect("class should exist");
+            let n = {
+                let mut n = -1;
+                if let Value::Primitive(pv) = get_value(ctx, r)? {
+                    if let PrimitiveValue::Int(i) = pv {
+                        n = i
+                    }
+                }
+                n
+            };
+
+            let mut fields = Fields::default();
+
+            for _ in 0..n {
+                let field = read_string(r)?.expect("field should exist");
+                fields.push(field);
+            }
+
+            info!("object: class={:?}, fields={:?}", class, fields);
+
+            ctx.insert(class, fields);
+
+            let tag = read_u8(r)?;
+
+            read_value(ctx, r, tag)
+        }
+        0x60..=0x6f => {
+            let reference = tag as usize - 0x60;
+            let (class, fields) = ctx.nth(reference).expect("field should exist");
+
+            let mut values = Vec::<Value>::with_capacity(fields.len());
+            for _ in 0..fields.len() {
+                let value = get_value(ctx, r)?;
+                values.push(value);
+            }
+
+            let obj = Object::new(class, fields, values);
+
+            info!("read object ok: {}", obj);
+
+            Ok(Some(Value::from(obj)))
+        }
         _ => todo!("unsupported tag: {:02x}", tag),
     }
 }
 
-pub fn get_value<R>(r: &mut R) -> io::Result<Value>
+pub fn get_value<R>(ctx: &mut Context, r: &mut R) -> io::Result<Value>
 where
     R: io::Read + Sized,
 {
@@ -512,19 +562,19 @@ where
 
     debug!("read tag: {:02x}", tag);
 
-    read_value(r, tag)?.ok_or(io::Error::from(io::ErrorKind::InvalidData))
+    read_value(ctx, r, tag)?.ok_or(io::Error::from(io::ErrorKind::InvalidData))
 }
 
-fn read_untyped_map<R>(r: &mut R, dst: &mut Map) -> io::Result<()>
+fn read_map<R>(ctx: &mut Context, r: &mut R, dst: &mut Map) -> io::Result<()>
 where
     R: io::Read,
 {
     loop {
         let tag = read_u8(r)?;
-        match read_value(r, tag)? {
+        match read_value(ctx, r, tag)? {
             Some(item) => match item {
                 Value::Primitive(key) => {
-                    let val = get_value(r)?;
+                    let val = get_value(ctx, r)?;
                     dst.insert(key, val);
                 }
                 _ => Err(io::Error::from(io::ErrorKind::InvalidData))?,
@@ -551,11 +601,13 @@ mod tests {
     fn test_get_value_null() -> io::Result<()> {
         init();
 
+        let mut ctx = Context::default();
+
         let b = vec![b'N'];
 
         let v = {
             let mut r = &b[..];
-            get_value(&mut r)?
+            get_value(&mut ctx, &mut r)?
         };
 
         assert_matches!(Value::Null, result);
@@ -568,6 +620,8 @@ mod tests {
         init();
 
         for next in [true, false] {
+            let mut ctx = Context::default();
+
             let b = {
                 let mut b = vec![];
                 encode::put_bool(&mut b, next)?;
@@ -576,7 +630,7 @@ mod tests {
 
             let o = {
                 let mut r = &b[..];
-                get_value(&mut r)?
+                get_value(&mut ctx, &mut r)?
             };
 
             assert_matches!(Value::from(next), o);
@@ -601,6 +655,7 @@ mod tests {
             i32::MAX,
             i32::MIN,
         ] {
+            let mut ctx = Context::default();
             let b = {
                 let mut b = vec![];
                 encode::put_i32(&mut b, next)?;
@@ -609,7 +664,7 @@ mod tests {
 
             let v = {
                 let mut r = &b[..];
-                get_value(&mut r)?
+                get_value(&mut ctx, &mut r)?
             };
 
             assert_matches!(Value::from(next), v);
@@ -639,6 +694,8 @@ mod tests {
             i64::MAX,
             i64::MIN,
         ] {
+            let mut ctx = Context::default();
+
             let b = {
                 let mut b = vec![];
                 encode::put_i64(&mut b, next)?;
@@ -647,7 +704,7 @@ mod tests {
 
             let v = {
                 let mut r = &b[..];
-                get_value(&mut r)?
+                get_value(&mut ctx, &mut r)?
             };
 
             assert_matches!(Value::from(next), v);
@@ -667,6 +724,7 @@ mod tests {
             format!("{}{}", "f".repeat(0x8000), "a".repeat(255)),
             format!("{}{}", "f".repeat(0x8000), "a".repeat(1024)),
         ] {
+            let mut ctx = Context::default();
             let b = {
                 let mut b = vec![];
                 encode::put_str(&mut b, &next)?;
@@ -675,7 +733,7 @@ mod tests {
 
             let v = {
                 let mut r = &b[..];
-                get_value(&mut r)?
+                get_value(&mut ctx, &mut r)?
             };
 
             assert_matches!(Value::from(next), v);
@@ -698,6 +756,7 @@ mod tests {
             g(0x8000 + 255),
             g(0x8000 + 1024),
         ] {
+            let mut ctx = Context::default();
             let b = {
                 let mut b = vec![];
                 encode::put_bytes(&mut b, &next[..])?;
@@ -706,7 +765,7 @@ mod tests {
 
             let v = {
                 let mut r = &b[..];
-                get_value(&mut r)?
+                get_value(&mut ctx, &mut r)?
             };
 
             assert_matches!(Value::from(next), v);
@@ -718,6 +777,8 @@ mod tests {
     #[test]
     fn test_get_value_list() -> io::Result<()> {
         init();
+
+        let mut ctx = Context::default();
 
         let b = {
             let mut b = vec![];
@@ -739,7 +800,7 @@ mod tests {
 
         let mut r = &b[..];
 
-        let actual = get_value(&mut r)?;
+        let actual = get_value(&mut ctx, &mut r)?;
 
         let expect = Value::from(
             vec!["foo", "bar", "qux"]
@@ -759,13 +820,35 @@ mod tests {
 
         for next in [
             "480362617292037175789303666f6f915a",
-            "48036261727bfbe8ffd03c0bb8037175784801615b01625c01635f00000c445a03666f6f910362617a4a0000019f18a3a2885a",
+            "48036261727bfbe8ffd03c0bb8037175784801615b01625c01635f00000c445a03666f6f910362617a4a0000019f18a3a2885a", // untyped
+            "4d176a6176612e7574696c2e4c696e6b6564486173684d617003666f6f91036261727bfbe8ffd03c0bb80362617a4a0000019f18a3a288037175784801615b01625c01635f00000c445a5a", // typed
         ] {
+            let mut ctx = Context::default();
+
             let b = hex::decode(next).unwrap();
 
             let mut r = &b[..];
 
-            let v = get_value(&mut r)?;
+            let v = get_value(&mut ctx, &mut r)?;
+
+            info!("decode result: {:?}", &v);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_object() -> io::Result<()> {
+        init();
+        for next in
+            ["4310636f6d2e6578616d706c652e5573657293026964046e616d650361676560fcd202e69da8e5b982a2"]
+        {
+            let mut ctx = Context::default();
+            let b = hex::decode(next).unwrap();
+
+            let mut r = &b[..];
+
+            let v = get_value(&mut ctx, &mut r)?;
 
             info!("decode result: {}", &v);
         }

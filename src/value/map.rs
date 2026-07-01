@@ -1,4 +1,5 @@
 use super::value::{PrimitiveValue, Value};
+use crate::cachestr::Cachestr;
 use core::iter::FusedIterator;
 use std::borrow::Borrow;
 use std::collections::hash_map::{self, HashMap};
@@ -134,6 +135,7 @@ type MapImpl = HashMap<Key, Value>;
 
 #[derive(PartialEq)]
 pub struct Map {
+    class: Option<Cachestr>,
     map: MapImpl,
 }
 
@@ -141,6 +143,7 @@ impl Map {
     #[inline]
     pub fn new() -> Self {
         Map {
+            class: None,
             map: MapImpl::new(),
         }
     }
@@ -148,8 +151,21 @@ impl Map {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Map {
+            class: None,
             map: MapImpl::with_capacity(capacity),
         }
+    }
+
+    #[inline]
+    pub fn set_class<C>(&mut self, class: C)
+    where
+        C: Into<Cachestr>,
+    {
+        self.class = Some(class.into());
+    }
+
+    pub fn class(&self) -> Option<&str> {
+        self.class.as_deref()
     }
 
     #[inline]
@@ -305,6 +321,7 @@ pub struct IterMut<'a> {
 impl Default for Map {
     fn default() -> Self {
         Map {
+            class: None,
             map: MapImpl::default(),
         }
     }
@@ -335,7 +352,15 @@ where
 impl Debug for Map {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Map")?;
+        match &self.class {
+            None => {
+                f.write_str("Map")?;
+            }
+            Some(class) => {
+                f.write_str(class.as_ref())?;
+            }
+        }
+
         self.map.fmt(f)
     }
 }
