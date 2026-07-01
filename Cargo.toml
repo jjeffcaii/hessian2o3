@@ -17,6 +17,7 @@ string_cache = "0.9"
 thiserror = "2"
 hessian2o3-derive = { path = "hessian2o3-derive" }
 base64 = "0.22.1"
+indexmap = "2.14.0"
 
 [dev-dependencies]
 pretty_env_logger = "0.5"

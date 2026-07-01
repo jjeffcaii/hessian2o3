@@ -9,6 +9,7 @@
 #[cfg(test)]
 #[macro_use]
 extern crate assert_matches;
+extern crate core;
 #[macro_use]
 extern crate log;
 
