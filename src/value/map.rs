@@ -3,10 +3,9 @@ use crate::cachestr::Cachestr;
 use core::iter::FusedIterator;
 use std::borrow::Borrow;
 use std::collections::hash_map::{self, HashMap};
-use std::fmt::{self, Debug, Display, Write};
+use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
-use std::mem;
-use std::ops;
+use std::{mem, ops};
 
 pub(crate) type Key = PrimitiveValue;
 

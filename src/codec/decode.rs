@@ -3,9 +3,7 @@ use crate::cachestr::Cachestr;
 use crate::codec::{Context, Fields};
 use crate::misc;
 use crate::value::{Map, Object, PrimitiveValue, Value};
-use std::arch::aarch64::vget_high_u16;
-use std::collections::HashMap;
-use std::{io, time};
+use std::io;
 
 #[inline]
 fn read_binary<R>(_ctx: &mut Context, r: &mut R, dst: &mut Vec<u8>, n: usize) -> io::Result<()>
