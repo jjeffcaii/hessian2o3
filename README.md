@@ -2,6 +2,8 @@
 
 A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian.caucho.com/doc/hessian-serialization.html), commonly used for Java/Dubbo RPC interop.
 
+> **⚠ 警告：本项目尚未完成，请勿在生产环境中使用。**
+
 ## Features
 
 - **Encoding** — serialize Rust values to Hessian 2.0 binary format
