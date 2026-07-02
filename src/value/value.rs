@@ -136,6 +136,12 @@ impl From<String> for PrimitiveValue {
     }
 }
 
+impl From<&str> for PrimitiveValue {
+    fn from(s: &str) -> Self {
+        PrimitiveValue::String(s.to_owned())
+    }
+}
+
 #[derive(PartialEq)]
 pub enum Value {
     Null,

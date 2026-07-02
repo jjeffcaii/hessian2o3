@@ -36,12 +36,14 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
 
     let mut java_names: Vec<String> = Vec::new();
     let mut rust_idents: Vec<&syn::Ident> = Vec::new();
+    let mut field_types: Vec<&syn::Type> = Vec::new();
 
     for field in named_fields {
         let ident = field.ident.as_ref().unwrap();
         let java = extract_rename(&field.attrs)?.unwrap_or_else(|| ident.to_string());
         java_names.push(java);
         rust_idents.push(ident);
+        field_types.push(&field.ty);
     }
 
     let field_serializers = rust_idents.iter().map(|ident| {
@@ -65,6 +67,46 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 )?;
                 #(#field_serializers)*
                 ::std::result::Result::Ok(())
+            }
+        }
+
+        impl ::hessian2o3::HessianDeserialize for #name {
+            fn hessian_deserialize(
+                value: ::hessian2o3::value::Value,
+            ) -> ::std::io::Result<Self> {
+                match value {
+                    ::hessian2o3::value::Value::Object(obj) => {
+                        #(
+                            let mut #rust_idents: ::std::option::Option<#field_types> =
+                                ::std::option::Option::None;
+                        )*
+                        for (k, v) in obj.into_fields() {
+                            match ::std::convert::AsRef::<str>::as_ref(&k) {
+                                #(
+                                    #java_names => {
+                                        #rust_idents = ::std::option::Option::Some(
+                                            ::hessian2o3::HessianDeserialize::hessian_deserialize(v)?,
+                                        );
+                                    }
+                                )*
+                                _ => {}
+                            }
+                        }
+                        ::std::result::Result::Ok(Self {
+                            #(
+                                #rust_idents: #rust_idents.ok_or_else(|| {
+                                    ::std::io::Error::new(
+                                        ::std::io::ErrorKind::InvalidData,
+                                        ::std::concat!("missing field `", #java_names, "`"),
+                                    )
+                                })?,
+                            )*
+                        })
+                    }
+                    other => ::std::result::Result::Err(
+                        ::hessian2o3::hessian::unexpected_value("object", &other),
+                    ),
+                }
             }
         }
     })

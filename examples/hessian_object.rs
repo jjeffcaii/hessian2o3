@@ -1,7 +1,7 @@
-use hessian2o3::{Hessian, hessian_to_vec};
+use hessian2o3::{Hessian, hessian_from_slice, hessian_to_vec};
 
 // ── Section 1: simple struct ──────────────────────────────────────────────
-#[derive(Hessian)]
+#[derive(Hessian, Debug, PartialEq)]
 #[hessian(class = "com.example.User")]
 struct User {
     id: i64,
@@ -10,14 +10,14 @@ struct User {
 }
 
 // ── Section 2: nested objects ─────────────────────────────────────────────
-#[derive(Hessian)]
+#[derive(Hessian, Debug, PartialEq)]
 #[hessian(class = "com.example.Address")]
 struct Address {
     city: String,
     zipcode: String,
 }
 
-#[derive(Hessian)]
+#[derive(Hessian, Debug, PartialEq)]
 #[hessian(class = "com.example.UserWithAddress")]
 struct UserWithAddress {
     id: i64,
@@ -27,7 +27,7 @@ struct UserWithAddress {
 }
 
 // ── Section 3: field rename (Rust snake_case → Java camelCase) ───────────
-#[derive(Hessian)]
+#[derive(Hessian, Debug, PartialEq)]
 #[hessian(class = "com.example.Product")]
 struct Product {
     #[hessian(rename = "productId")]
@@ -45,7 +45,10 @@ fn main() {
         age: 30,
     };
     let bytes = hessian_to_vec(&user).unwrap();
-    println!("User: {}\n", hex::encode(&bytes));
+    println!("User: {}", hex::encode(&bytes));
+    let back: User = hessian_from_slice(&bytes).unwrap();
+    assert_eq!(user, back);
+    println!("Decoded: {:?}\n", back);
 
     // ── Section 2 ──
     println!("=== Nested objects (class-ref reuse) ===");
@@ -69,9 +72,12 @@ fn main() {
         .matches("636f6d2e6578616d706c652e41646472657373")
         .count();
     println!(
-        "Address class definition appears {} time(s) (expected 1 — second instance reuses ref)\n",
+        "Address class definition appears {} time(s) (expected 1 — second instance reuses ref)",
         class_def_count
     );
+    let back: UserWithAddress = hessian_from_slice(&bytes).unwrap();
+    assert_eq!(uwaddr, back);
+    println!("Decoded: {:?}\n", back);
 
     // ── Section 3 ──
     println!("=== Field rename (snake_case → camelCase) ===");
@@ -82,4 +88,7 @@ fn main() {
     let bytes = hessian_to_vec(&product).unwrap();
     println!("Product: {}", hex::encode(&bytes));
     println!("(wire fields are 'productId' / 'productName', not Rust's snake_case names)");
+    let back: Product = hessian_from_slice(&bytes).unwrap();
+    assert_eq!(product, back);
+    println!("Decoded: {:?}", back);
 }

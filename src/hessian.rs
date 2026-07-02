@@ -1,4 +1,5 @@
 use crate::codec::{self, Context};
+use crate::value::{PrimitiveValue, Value};
 use std::io;
 
 pub trait HessianSerialize {
@@ -108,6 +109,97 @@ impl<T: HessianSerialize> HessianSerialize for Vec<T> {
     }
 }
 
+/// The counterpart of [`HessianSerialize`]: builds `Self` from a decoded
+/// [`Value`] tree. The byte-level wire format (class definitions, object
+/// references, chunking, ...) is handled by [`codec::get_value`]; this trait
+/// only maps the resulting `Value` onto a Rust type.
+pub trait HessianDeserialize: Sized {
+    fn hessian_deserialize(value: Value) -> io::Result<Self>;
+}
+
+/// Builds an error for a `Value` whose shape doesn't match the target type.
+/// Exposed (hidden) for use by the `#[derive(Hessian)]` expansion.
+#[doc(hidden)]
+pub fn unexpected_value(expect: &str, actual: &Value) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("expect hessian {}, but got: {:?}", expect, actual),
+    )
+}
+
+impl HessianDeserialize for bool {
+    fn hessian_deserialize(value: Value) -> io::Result<Self> {
+        match value {
+            Value::Primitive(PrimitiveValue::Bool(b)) => Ok(b),
+            other => Err(unexpected_value("bool", &other)),
+        }
+    }
+}
+
+macro_rules! impl_hessian_deserialize_int {
+    ($($t:ty),*) => {$(
+        impl HessianDeserialize for $t {
+            fn hessian_deserialize(value: Value) -> io::Result<Self> {
+                let n = match value {
+                    Value::Primitive(PrimitiveValue::Int(i)) => i as i64,
+                    Value::Primitive(PrimitiveValue::Long(l)) => l,
+                    other => return Err(unexpected_value("integer", &other)),
+                };
+                <$t>::try_from(n).map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("integer {} out of range of {}", n, stringify!($t)),
+                    )
+                })
+            }
+        }
+    )*};
+}
+
+impl_hessian_deserialize_int!(i8, i16, i32, i64, u8, u16, u32, u64);
+
+impl HessianDeserialize for f32 {
+    fn hessian_deserialize(value: Value) -> io::Result<Self> {
+        f64::hessian_deserialize(value).map(|d| d as f32)
+    }
+}
+
+impl HessianDeserialize for f64 {
+    fn hessian_deserialize(value: Value) -> io::Result<Self> {
+        match value {
+            Value::Primitive(PrimitiveValue::Double(d)) => Ok(d),
+            other => Err(unexpected_value("double", &other)),
+        }
+    }
+}
+
+impl HessianDeserialize for String {
+    fn hessian_deserialize(value: Value) -> io::Result<Self> {
+        match value {
+            Value::Primitive(PrimitiveValue::String(s)) => Ok(s),
+            other => Err(unexpected_value("string", &other)),
+        }
+    }
+}
+
+impl<T: HessianDeserialize> HessianDeserialize for Option<T> {
+    fn hessian_deserialize(value: Value) -> io::Result<Self> {
+        match value {
+            Value::Null => Ok(None),
+            other => T::hessian_deserialize(other).map(Some),
+        }
+    }
+}
+
+impl<T: HessianDeserialize> HessianDeserialize for Vec<T> {
+    fn hessian_deserialize(value: Value) -> io::Result<Self> {
+        match value {
+            Value::List(l) => l.into_iter().map(T::hessian_deserialize).collect(),
+            other => Err(unexpected_value("list", &other)),
+        }
+    }
+}
+
 pub fn hessian_to_writer<W: io::Write, T: HessianSerialize>(
     writer: &mut W,
     value: &T,
@@ -122,6 +214,16 @@ pub fn hessian_to_vec<T: HessianSerialize>(value: &T) -> crate::Result<Vec<u8>> 
     let mut buf = Vec::with_capacity(128);
     hessian_to_writer(&mut buf, value)?;
     Ok(buf)
+}
+
+pub fn hessian_from_reader<R: io::Read, T: HessianDeserialize>(reader: &mut R) -> crate::Result<T> {
+    let mut ctx = Context::default();
+    let value = codec::get_value(&mut ctx, reader).map_err(crate::Error::IO)?;
+    T::hessian_deserialize(value).map_err(crate::Error::IO)
+}
+
+pub fn hessian_from_slice<T: HessianDeserialize>(mut b: &[u8]) -> crate::Result<T> {
+    hessian_from_reader(&mut b)
 }
 
 #[cfg(test)]

@@ -39,6 +39,12 @@ impl Object {
             values: &self.values,
         }
     }
+
+    /// Consumes the object, returning its `(field name, value)` pairs in
+    /// declaration order. The class name is discarded.
+    pub fn into_fields(self) -> impl Iterator<Item = (Cachestr, Value)> {
+        self.fields.into_iter().zip(self.values)
+    }
 }
 
 pub struct Iter<'a> {

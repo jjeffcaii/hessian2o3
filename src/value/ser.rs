@@ -2,7 +2,6 @@ use super::value::Value;
 use crate::Error;
 use crate::value::{List, Map, Object, PrimitiveValue};
 use serde::{Serialize, ser};
-use std::marker::PhantomData;
 use std::time::SystemTime;
 
 impl serde::Serialize for Value {
@@ -66,6 +65,12 @@ impl serde::Serialize for Map {
         use ser::SerializeMap;
 
         let mut sem = serializer.serialize_map(Some(self.len()))?;
+
+        // write a special key '$class' if exists.
+        if let Some(class) = self.class() {
+            sem.serialize_entry("$class", class)?;
+        }
+
         for (k, v) in self.iter() {
             sem.serialize_entry(k, v)?;
         }
@@ -82,6 +87,7 @@ impl serde::Serialize for Object {
 
         let mut sem = serializer.serialize_map(Some(self.len()))?;
 
+        // write a special key '$class' which represents `class` from Object.
         sem.serialize_entry("$class", self.class())?;
 
         for (k, v) in self.iter() {
@@ -92,11 +98,12 @@ impl serde::Serialize for Object {
     }
 }
 
-pub struct SerializeMap<'a> {
-    phantom: PhantomData<&'a ()>,
+pub struct SerializeMap {
+    map: Map,
+    next_key: Option<PrimitiveValue>,
 }
 
-impl<'a> ser::SerializeStruct for SerializeMap<'a> {
+impl ser::SerializeStruct for SerializeMap {
     type Ok = Value;
     type Error = Error;
 
@@ -104,15 +111,17 @@ impl<'a> ser::SerializeStruct for SerializeMap<'a> {
     where
         T: ?Sized + Serialize,
     {
-        todo!()
+        let v = value.serialize(&mut Serializer::default())?;
+        self.map.insert(PrimitiveValue::String(key.to_owned()), v);
+        Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        Ok(Value::Map(self.map))
     }
 }
 
-impl<'a> ser::SerializeMap for SerializeMap<'a> {
+impl ser::SerializeMap for SerializeMap {
     type Ok = Value;
     type Error = Error;
 
@@ -120,26 +129,42 @@ impl<'a> ser::SerializeMap for SerializeMap<'a> {
     where
         T: ?Sized + Serialize,
     {
-        todo!()
+        let k = key.serialize(&mut Serializer::default())?;
+        let pv = match k {
+            Value::Primitive(pv) => pv,
+            _ => {
+                return Err(Error::Other(anyhow::anyhow!(
+                    "map key must serialize to a primitive value"
+                )));
+            }
+        };
+        self.next_key = Some(pv);
+        Ok(())
     }
 
     fn serialize_value<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
         T: ?Sized + Serialize,
     {
-        todo!()
+        let v = value.serialize(&mut Serializer::default())?;
+        let k = self
+            .next_key
+            .take()
+            .expect("serialize_value called before serialize_key");
+        self.map.insert(k, v);
+        Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        Ok(Value::Map(self.map))
     }
 }
 
-pub struct SerializeVec<'a> {
-    vec: &'a [Value],
+pub struct SerializeVec {
+    inner: Vec<Value>,
 }
 
-impl<'a> ser::SerializeTupleStruct for SerializeVec<'a> {
+impl ser::SerializeTupleStruct for SerializeVec {
     type Ok = Value;
     type Error = Error;
 
@@ -147,15 +172,15 @@ impl<'a> ser::SerializeTupleStruct for SerializeVec<'a> {
     where
         T: ?Sized + Serialize,
     {
-        todo!()
+        ser::SerializeSeq::serialize_element(self, value)
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        ser::SerializeSeq::end(self)
     }
 }
 
-impl<'a> ser::SerializeSeq for SerializeVec<'a> {
+impl ser::SerializeSeq for SerializeVec {
     type Ok = Value;
     type Error = Error;
 
@@ -163,15 +188,17 @@ impl<'a> ser::SerializeSeq for SerializeVec<'a> {
     where
         T: ?Sized + Serialize,
     {
-        todo!()
+        let v = value.serialize(&mut Serializer::default())?;
+        self.inner.push(v);
+        Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        Ok(Value::from(self.inner))
     }
 }
 
-impl<'a> ser::SerializeTuple for SerializeVec<'a> {
+impl ser::SerializeTuple for SerializeVec {
     type Ok = Value;
     type Error = Error;
 
@@ -179,20 +206,19 @@ impl<'a> ser::SerializeTuple for SerializeVec<'a> {
     where
         T: ?Sized + Serialize,
     {
-        todo!()
+        ser::SerializeSeq::serialize_element(self, value)
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        ser::SerializeSeq::end(self)
     }
 }
 
-pub struct SerializeTupleVariant<'a> {
-    name: &'a str,
-    vec: &'a [Value],
+pub struct SerializeTupleVariant {
+    vec: Vec<Value>,
 }
 
-impl<'a> ser::SerializeTupleVariant for SerializeTupleVariant<'a> {
+impl ser::SerializeTupleVariant for SerializeTupleVariant {
     type Ok = Value;
     type Error = Error;
 
@@ -200,19 +226,21 @@ impl<'a> ser::SerializeTupleVariant for SerializeTupleVariant<'a> {
     where
         T: ?Sized + Serialize,
     {
-        todo!()
+        let v = value.serialize(&mut Serializer::default())?;
+        self.vec.push(v);
+        Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        Ok(Value::List(List::from(self.vec)))
     }
 }
 
-pub struct SerializeStructVariant<'a> {
-    name: &'a str,
+pub struct SerializeStructVariant {
+    map: Map,
 }
 
-impl<'a> ser::SerializeStructVariant for SerializeStructVariant<'a> {
+impl ser::SerializeStructVariant for SerializeStructVariant {
     type Ok = Value;
     type Error = Error;
 
@@ -220,11 +248,13 @@ impl<'a> ser::SerializeStructVariant for SerializeStructVariant<'a> {
     where
         T: ?Sized + Serialize,
     {
-        todo!()
+        let v = value.serialize(&mut Serializer::default())?;
+        self.map.insert(PrimitiveValue::String(key.to_owned()), v);
+        Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        Ok(Value::Map(self.map))
     }
 }
 
@@ -233,16 +263,16 @@ pub struct Serializer {}
 
 impl Serializer {}
 
-impl<'a> serde::Serializer for &'a mut Serializer {
+impl serde::Serializer for &mut Serializer {
     type Ok = Value;
     type Error = Error;
-    type SerializeSeq = SerializeVec<'a>;
-    type SerializeTuple = SerializeVec<'a>;
-    type SerializeTupleStruct = SerializeVec<'a>;
-    type SerializeTupleVariant = SerializeTupleVariant<'a>;
-    type SerializeMap = SerializeMap<'a>;
-    type SerializeStruct = SerializeMap<'a>;
-    type SerializeStructVariant = SerializeStructVariant<'a>;
+    type SerializeSeq = SerializeVec;
+    type SerializeTuple = SerializeVec;
+    type SerializeTupleStruct = SerializeVec;
+    type SerializeTupleVariant = SerializeTupleVariant;
+    type SerializeMap = SerializeMap;
+    type SerializeStruct = SerializeMap;
+    type SerializeStructVariant = SerializeStructVariant;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
         Ok(Value::from(v))
@@ -352,15 +382,17 @@ impl<'a> serde::Serializer for &'a mut Serializer {
     where
         T: ?Sized + Serialize,
     {
-        todo!()
+        value.serialize(self)
     }
 
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        todo!()
+        Ok(SerializeVec {
+            inner: Vec::with_capacity(len.unwrap_or(0)),
+        })
     }
 
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        todo!()
+        self.serialize_seq(Some(len))
     }
 
     fn serialize_tuple_struct(
@@ -368,7 +400,7 @@ impl<'a> serde::Serializer for &'a mut Serializer {
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        todo!()
+        self.serialize_seq(Some(len))
     }
 
     fn serialize_tuple_variant(
@@ -378,11 +410,16 @@ impl<'a> serde::Serializer for &'a mut Serializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        todo!()
+        Ok(SerializeTupleVariant {
+            vec: Vec::with_capacity(len),
+        })
     }
 
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        todo!()
+        Ok(SerializeMap {
+            map: Map::with_capacity(len.unwrap_or(0)),
+            next_key: None,
+        })
     }
 
     fn serialize_struct(
@@ -390,7 +427,10 @@ impl<'a> serde::Serializer for &'a mut Serializer {
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        todo!()
+        Ok(SerializeMap {
+            map: Map::with_capacity(len),
+            next_key: None,
+        })
     }
 
     fn serialize_struct_variant(
@@ -400,7 +440,9 @@ impl<'a> serde::Serializer for &'a mut Serializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        todo!()
+        Ok(SerializeStructVariant {
+            map: Map::with_capacity(len),
+        })
     }
 }
 
@@ -414,16 +456,24 @@ mod tests {
         pretty_env_logger::try_init_timed().ok();
     }
 
+    macro_rules! assert_ser {
+        ($origin:expr, $expect:expr) => {{
+            let mut ser = Serializer::default();
+            let actual = $origin.serialize(&mut ser)?;
+            assert_eq!($expect, actual);
+        }};
+    }
+
     #[test]
     fn test_serialize() -> anyhow::Result<()> {
         init();
 
-        bingo(true, Value::from(true))?;
-        bingo(false, Value::from(false))?;
-        bingo(123i32, Value::from(123i32))?;
-        bingo(123i64, Value::from(123i64))?;
-        bingo(3.14f64, Value::from(3.14f64))?;
-        bingo("foobar", Value::from("foobar".to_owned()))?;
+        assert_ser!(true, Value::from(true));
+        assert_ser!(false, Value::from(false));
+        assert_ser!(123i32, Value::from(123i32));
+        assert_ser!(123i64, Value::from(123i64));
+        assert_ser!(3.14f64, Value::from(3.14f64));
+        assert_ser!("foobar", Value::from("foobar".to_owned()));
 
         Ok(())
     }
@@ -455,14 +505,79 @@ mod tests {
         Ok(())
     }
 
-    fn bingo<S>(origin: S, expect: Value) -> anyhow::Result<()>
-    where
-        S: Serialize,
-    {
-        let mut ser = Serializer::default();
-        let actual = origin.serialize(&mut ser)?;
+    #[test]
+    fn test_serialize_seq_and_tuple() -> anyhow::Result<()> {
+        init();
 
-        assert_matches!(expect, actual);
+        assert_ser!(
+            vec![1i32, 2, 3],
+            Value::from(vec![
+                Value::from(1i32),
+                Value::from(2i32),
+                Value::from(3i32),
+            ])
+        );
+
+        assert_ser!(
+            (1i32, "two"),
+            Value::from(vec![Value::from(1i32), Value::from("two".to_owned())])
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_serialize_map_and_struct() -> anyhow::Result<()> {
+        init();
+
+        use std::collections::BTreeMap;
+
+        let mut m: BTreeMap<String, i32> = BTreeMap::new();
+        m.insert("foo".to_owned(), 1);
+        m.insert("bar".to_owned(), 2);
+
+        let mut expect = Map::default();
+        expect.insert(PrimitiveValue::String("foo".to_owned()), Value::from(1i32));
+        expect.insert(PrimitiveValue::String("bar".to_owned()), Value::from(2i32));
+        assert_ser!(m, Value::Map(expect));
+
+        #[derive(Serialize)]
+        struct Point {
+            x: i32,
+            y: i32,
+        }
+
+        let mut expect = Map::default();
+        expect.insert(PrimitiveValue::String("x".to_owned()), Value::from(1i32));
+        expect.insert(PrimitiveValue::String("y".to_owned()), Value::from(2i32));
+        assert_ser!(Point { x: 1, y: 2 }, Value::Map(expect));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_serialize_enum_variants() -> anyhow::Result<()> {
+        init();
+
+        #[derive(Serialize)]
+        enum E {
+            Unit,
+            Newtype(i32),
+            Tuple(i32, i32),
+            Struct { a: i32, b: i32 },
+        }
+
+        assert_ser!(E::Unit, Value::from("Unit".to_owned()));
+        assert_ser!(E::Newtype(5), Value::from(5i32));
+        assert_ser!(
+            E::Tuple(1, 2),
+            Value::from(vec![Value::from(1i32), Value::from(2i32)])
+        );
+
+        let mut expect = Map::default();
+        expect.insert(PrimitiveValue::String("a".to_owned()), Value::from(1i32));
+        expect.insert(PrimitiveValue::String("b".to_owned()), Value::from(2i32));
+        assert_ser!(E::Struct { a: 1, b: 2 }, Value::Map(expect));
 
         Ok(())
     }

@@ -137,3 +137,12 @@ impl From<Vec<Value>> for List {
         }
     }
 }
+
+impl IntoIterator for List {
+    type Item = Value;
+    type IntoIter = std::vec::IntoIter<Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.l.into_iter()
+    }
+}

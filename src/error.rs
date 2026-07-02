@@ -25,3 +25,9 @@ impl serde::ser::Error for Error {
         Self::Unknown
     }
 }
+
+impl serde::de::Error for Error {
+    fn custom<T: Display>(msg: T) -> Self {
+        Self::Other(anyhow::anyhow!("{}", msg))
+    }
+}

@@ -1,6 +1,6 @@
-use hessian2o3::{Hessian, hessian_to_vec};
+use hessian2o3::{Hessian, hessian_from_slice, hessian_to_vec};
 
-#[derive(Hessian)]
+#[derive(Hessian, Debug, PartialEq)]
 #[hessian(class = "com.example.Point")]
 struct Point {
     x: i32,
@@ -18,7 +18,7 @@ fn test_derive_simple_struct() {
     );
 }
 
-#[derive(Hessian)]
+#[derive(Hessian, Debug, PartialEq)]
 #[hessian(class = "com.hessian2o3.User")]
 struct User {
     #[hessian(rename = "id")]
@@ -53,7 +53,7 @@ fn test_derive_with_rename() {
     );
 }
 
-#[derive(Hessian)]
+#[derive(Hessian, Debug, PartialEq)]
 #[hessian(class = "com.hessian2o3.Address")]
 struct Address {
     #[hessian(rename = "city")]
@@ -62,7 +62,7 @@ struct Address {
     zipcode: String,
 }
 
-#[derive(Hessian)]
+#[derive(Hessian, Debug, PartialEq)]
 #[hessian(class = "com.hessian2o3.UserFull")]
 struct UserFull {
     #[hessian(rename = "id")]
@@ -129,7 +129,7 @@ fn test_nested_objects_match_encode_test() {
 
 #[test]
 fn test_option_and_vec_fields() {
-    #[derive(Hessian)]
+    #[derive(Hessian, Debug, PartialEq)]
     #[hessian(class = "com.example.Container")]
     struct Container {
         #[hessian(rename = "maybeVal")]
@@ -164,4 +164,80 @@ fn test_option_and_vec_fields() {
     assert!(s2.contains("ba"), "Some(42) should encode as i32 value ba");
     // empty Vec: 78 = BC_LIST_DIRECT_UNTYPED+0
     assert!(s2.contains("78"), "empty Vec should encode as 78");
+}
+
+#[test]
+fn test_derive_roundtrip_simple() {
+    let point = Point { x: 1, y: 2 };
+    let bytes = hessian_to_vec(&point).unwrap();
+    let back: Point = hessian_from_slice(&bytes).unwrap();
+    assert_eq!(point, back);
+}
+
+#[test]
+fn test_derive_roundtrip_with_rename() {
+    let user = User {
+        id: 1234,
+        name: String::from("杨幂"),
+        age: 18,
+    };
+    let bytes = hessian_to_vec(&user).unwrap();
+    let back: User = hessian_from_slice(&bytes).unwrap();
+    assert_eq!(user, back);
+}
+
+#[test]
+fn test_derive_roundtrip_nested() {
+    let user = UserFull {
+        id: 1234,
+        name: String::from("杨幂"),
+        age: 18,
+        home: Address {
+            city: String::from("Shanghai"),
+            zipcode: String::from("200000"),
+        },
+        company: Address {
+            city: String::from("Beijing"),
+            zipcode: String::from("100000"),
+        },
+    };
+    // the second Address is only a class *reference* on the wire; decoding
+    // must resolve it through the shared Context.
+    let bytes = hessian_to_vec(&user).unwrap();
+    let back: UserFull = hessian_from_slice(&bytes).unwrap();
+    assert_eq!(user, back);
+}
+
+#[test]
+fn test_derive_roundtrip_option_and_vec() {
+    #[derive(Hessian, Debug, PartialEq)]
+    #[hessian(class = "com.example.Container")]
+    struct Container {
+        #[hessian(rename = "maybeVal")]
+        maybe_val: Option<i32>,
+        #[hessian(rename = "nums")]
+        nums: Vec<i32>,
+    }
+
+    for c in [
+        Container {
+            maybe_val: None,
+            nums: vec![1, 2, 3],
+        },
+        Container {
+            maybe_val: Some(42),
+            nums: vec![],
+        },
+    ] {
+        let bytes = hessian_to_vec(&c).unwrap();
+        let back: Container = hessian_from_slice(&bytes).unwrap();
+        assert_eq!(c, back);
+    }
+}
+
+#[test]
+fn test_derive_deserialize_wrong_shape_errors() {
+    // a bare integer is not an object
+    let bytes = hessian_to_vec(&123i32).unwrap();
+    assert!(hessian_from_slice::<Point>(&bytes).is_err());
 }

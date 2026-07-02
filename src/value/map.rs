@@ -326,6 +326,15 @@ impl Default for Map {
     }
 }
 
+impl IntoIterator for Map {
+    type Item = (Key, Value);
+    type IntoIter = hash_map::IntoIter<Key, Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.map.into_iter()
+    }
+}
+
 impl<Q> ops::Index<&Q> for Map
 where
     Key: Borrow<Q>,
