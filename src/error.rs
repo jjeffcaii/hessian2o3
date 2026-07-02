@@ -9,6 +9,9 @@ pub enum Error {
 
     #[error("unknown hessian2 serde error")]
     Unknown,
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 impl Error {

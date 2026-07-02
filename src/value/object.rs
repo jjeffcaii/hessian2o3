@@ -19,6 +19,55 @@ impl Object {
             values,
         }
     }
+
+    pub fn fields(&self) -> &Fields {
+        &self.fields
+    }
+
+    pub fn class(&self) -> &str {
+        &self.class
+    }
+
+    pub fn len(&self) -> usize {
+        self.fields.len()
+    }
+
+    pub fn iter(&self) -> Iter<'_> {
+        Iter {
+            seq: 0,
+            fields: &self.fields,
+            values: &self.values,
+        }
+    }
+}
+
+pub struct Iter<'a> {
+    seq: usize,
+    fields: &'a Fields,
+    values: &'a [Value],
+}
+
+impl<'a> ExactSizeIterator for Iter<'a> {
+    fn len(&self) -> usize {
+        self.fields.len()
+    }
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = (&'a str, &'a Value);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.seq >= self.fields.len() {
+            return None;
+        }
+
+        let k = &self.fields[self.seq];
+        let v = &self.values[self.seq];
+
+        self.seq += 1;
+
+        Some((k.as_ref(), v))
+    }
 }
 
 impl ops::Index<&str> for Object {
