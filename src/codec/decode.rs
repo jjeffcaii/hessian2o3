@@ -3,10 +3,452 @@ use crate::cachestr::Cachestr;
 use crate::codec::{Context, Fields};
 use crate::misc;
 use crate::value::{Map, Object, PrimitiveValue, Value};
-use std::io;
+use std::io::{self, BufRead as _, BufReader, Read as _};
+use std::time::SystemTime;
+
+#[derive(Debug)]
+pub(crate) enum Header {
+    Null,
+    Boolean(u8),
+    StringDirect(u8),
+    StringShort(u8),
+    StringChunk,
+    StringFinal,
+
+    BinaryDirect(u8),
+    BinaryShort(u8),
+    BinaryChunk,
+    BinaryFinal,
+
+    Int0(u8),
+    Int8(u8),
+    Int16(u8),
+    Int32,
+
+    Long0(u8),
+    Long8(u8),
+    Long16(u8),
+    Long32,
+    Long64,
+
+    DoubleZero,
+    DoubleOne,
+
+    Double8,
+    Double16,
+    Double32,
+    Double64,
+
+    Date32,
+    Date64,
+
+    BeginTypedList0(u8),
+    BeginUntypedList0(u8),
+
+    BeginUntypedMap,
+    BeginTypedMap,
+    End,
+
+    Unknown,
+}
+
+pub(crate) struct Reader<R> {
+    r: BufReader<R>,
+    ctx: Context,
+}
+
+impl<R> Reader<R> {
+    pub fn new(reader: R) -> Self
+    where
+        R: io::Read,
+    {
+        Self {
+            r: BufReader::new(reader),
+            ctx: Context::default(),
+        }
+    }
+}
+
+impl<R> Reader<R>
+where
+    R: io::Read + Sized,
+{
+    #[inline]
+    pub(crate) fn consume(&mut self, n: usize) {
+        self.r.consume(n)
+    }
+
+    #[inline]
+    pub(crate) fn peek(&mut self) -> io::Result<Header> {
+        let buf = {
+            let mut buf = self.r.buffer();
+            if buf.is_empty() {
+                buf = self.r.fill_buf()?;
+            }
+            buf
+        };
+
+        let first = buf.first().ok_or_else(|| io::ErrorKind::UnexpectedEof)?;
+        let header = match *first {
+            0x00..=0x1f => Header::StringDirect(*first),
+            0x30..=0x33 => Header::StringShort(*first),
+            BC_STRING_CHUNK => Header::StringChunk,
+            BC_STRING => Header::StringFinal,
+
+            BC_BINARY_CHUNK => Header::BinaryChunk,
+            BC_BINARY => Header::BinaryFinal,
+            0x20..=0x2f => Header::BinaryDirect(*first),
+            0x34..=0x37 => Header::BinaryShort(*first),
+
+            BC_NULL => Header::Null,
+
+            BC_BOOL_TRUE => Header::Boolean(*first),
+            BC_BOOL_FALSE => Header::Boolean(*first),
+
+            0x80..=0xbf => Header::Int0(*first),
+            0xc0..=0xcf => Header::Int8(*first),
+            0xd0..=0xd7 => Header::Int16(*first),
+            BC_INT => Header::Int32,
+
+            0xd8..=0xef => Header::Long0(*first),
+            0xf0..=0xff => Header::Long8(*first),
+            0x38..=0x3f => Header::Long16(*first),
+            BC_LONG_INT => Header::Long32,
+            BC_LONG => Header::Long64,
+
+            BC_DOUBLE_ZERO => Header::DoubleZero,
+            BC_DOUBLE_ONE => Header::DoubleOne,
+            BC_DOUBLE_BYTE => Header::Double8,
+            BC_DOUBLE_SHORT => Header::Double16,
+            BC_DOUBLE_MILL => Header::Double32,
+            BC_DOUBLE => Header::Double64,
+
+            BC_DATE_MINUTE => Header::Date32,
+            BC_DATE => Header::Date64,
+
+            0x70..=0x77 => Header::BeginTypedList0(*first),
+            0x78..=0x7f => Header::BeginUntypedList0(*first),
+
+            BC_MAP_UNTYPED => Header::BeginUntypedMap,
+            BC_MAP => Header::BeginTypedMap,
+            BC_END => Header::End,
+            _ => Header::Unknown,
+        };
+
+        Ok(header)
+    }
+
+    pub(crate) fn begin_map(&mut self) -> io::Result<Option<Cachestr>> {
+        match self.peek()? {
+            Header::BeginTypedMap => {
+                self.consume(1);
+
+                let class = Cachestr::from(self.read_string()?);
+
+                Ok(Some(class))
+            }
+            Header::BeginUntypedMap => {
+                self.consume(1);
+                Ok(None)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn begin_list(&mut self) -> io::Result<(Option<Cachestr>, usize)> {
+        match self.peek()? {
+            Header::BeginTypedList0(n) => {
+                self.consume(1);
+                let length = (n - BC_LIST_DIRECT) as usize;
+                let class = Cachestr::from(self.read_string()?);
+                Ok((Some(class), length))
+            }
+            Header::BeginUntypedList0(n) => {
+                self.consume(1);
+                let length = (n - BC_LIST_DIRECT_UNTYPED) as usize;
+                Ok((None, length))
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn read_null(&mut self) -> io::Result<()> {
+        match self.peek()? {
+            Header::Null => {
+                self.consume(1);
+                Ok(())
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn read_bool(&mut self) -> io::Result<bool> {
+        match self.peek()? {
+            Header::Boolean(n) => {
+                self.consume(1);
+                match n {
+                    BC_BOOL_TRUE => Ok(true),
+                    BC_BOOL_FALSE => Ok(false),
+                    _ => unreachable!(),
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn read_string(&mut self) -> io::Result<String> {
+        match self.peek()? {
+            Header::StringDirect(n) => {
+                self.consume(1);
+                let length = n as usize - 0x00;
+                let mut s = String::with_capacity(length);
+                read_utf8(&mut self.r, &mut s, length)?;
+                Ok(s)
+            }
+            Header::StringShort(n) => {
+                self.consume(1);
+
+                let length = {
+                    let high = (n - BC_STRING_SHORT) as usize;
+                    let low = read_u8(&mut self.r)? as usize;
+                    (high << 8) + low
+                };
+                let mut s = String::with_capacity(length);
+                read_utf8(&mut self.r, &mut s, length)?;
+                Ok(s)
+            }
+            Header::StringChunk => {
+                self.consume(1);
+
+                let mut s = String::with_capacity(0x8000 + 0x8000 / 2);
+
+                let length = {
+                    let high = read_u8(&mut self.r)? as usize;
+                    let low = read_u8(&mut self.r)? as usize;
+                    (high << 8) + low
+                };
+
+                read_utf8_chunked(&mut self.r, &mut s, length, false)?;
+
+                Ok(s)
+            }
+            Header::StringFinal => {
+                self.consume(1);
+
+                let length = {
+                    let high = read_u8(&mut self.r)? as usize;
+                    let low = read_u8(&mut self.r)? as usize;
+                    (high << 8) + low
+                };
+                let mut s = String::with_capacity(length);
+
+                read_utf8_chunked(&mut self.r, &mut s, length, true)?;
+
+                Ok(s)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn read_i32(&mut self) -> io::Result<i32> {
+        match self.peek()? {
+            Header::Int0(n) => {
+                self.consume(1);
+                let direct = (n as i8) - (BC_INT_ZERO as i8);
+                Ok(direct as i32)
+            }
+            Header::Int8(n) => {
+                self.consume(1);
+                let low = read_u8(&mut self.r)? as i32;
+                let high = (((n as i8) - (BC_INT_BYTE_ZERO as i8)) as i32) << 8;
+                Ok(high + low)
+            }
+            Header::Int16(n) => {
+                self.consume(1);
+                let num = {
+                    let high = ((n as i8) - (BC_INT_SHORT_ZERO as i8)) as i32;
+                    let middle = read_u8(&mut self.r)? as i32;
+                    let low = read_u8(&mut self.r)? as i32;
+                    (high << 16) + (middle << 8) + low
+                };
+                Ok(num)
+            }
+            Header::Int32 => {
+                self.consume(1);
+                let v = read_i32(&mut self.r)?;
+                Ok(v)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn read_i64(&mut self) -> io::Result<i64> {
+        match self.peek()? {
+            Header::Long0(n) => {
+                self.consume(1);
+                let num = {
+                    let direct = (n as i8) - (BC_LONG_ZERO as i8);
+                    direct as i64
+                };
+                Ok(num)
+            }
+            Header::Long8(n) => {
+                self.consume(1);
+
+                let num = {
+                    let low = read_u8(&mut self.r)? as i64;
+                    let high = (((n as i8) - (BC_LONG_BYTE_ZERO as i8)) as i64) << 8;
+                    high + low
+                };
+
+                Ok(num)
+            }
+            Header::Long16(n) => {
+                self.consume(1);
+
+                let num = {
+                    let high = ((n as i8) - (BC_LONG_SHORT_ZERO as i8)) as i64;
+                    let middle = read_u8(&mut self.r)? as i64;
+                    let low = read_u8(&mut self.r)? as i64;
+                    (high << 16) + (middle << 8) + low
+                };
+
+                Ok(num)
+            }
+            Header::Long32 => {
+                self.consume(1);
+                let num = {
+                    let v = read_i32(&mut self.r)?;
+                    v as i64
+                };
+                Ok(num)
+            }
+            Header::Long64 => {
+                self.consume(1);
+                read_i64(&mut self.r)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn read_binary(&mut self) -> io::Result<Vec<u8>> {
+        match self.peek()? {
+            Header::BinaryDirect(n) => {
+                self.consume(1);
+
+                let length = n as usize - 0x20;
+                let mut b = vec![0; length];
+                self.r.read_exact(&mut b[..])?;
+
+                Ok(b)
+            }
+            Header::BinaryShort(n) => {
+                self.consume(1);
+
+                let length = {
+                    let high = (n as usize) - (BC_BINARY_SHORT as usize);
+                    let low = read_u8(&mut self.r)? as usize;
+                    (high << 8) + low
+                };
+
+                let mut b = vec![0; length];
+                self.r.read_exact(&mut b[..])?;
+
+                Ok(b)
+            }
+            Header::BinaryChunk => {
+                self.consume(1);
+                let length = {
+                    let high = read_u8(&mut self.r)? as usize;
+                    let low = read_u8(&mut self.r)? as usize;
+                    (high << 8) + low
+                };
+
+                let mut b = Vec::<u8>::with_capacity(length + length / 2);
+
+                read_binary_chunked(&mut self.r, &mut b, length, false)?;
+
+                Ok(b)
+            }
+            Header::BinaryFinal => {
+                self.consume(1);
+
+                let length = {
+                    let high = read_u8(&mut self.r)? as usize;
+                    let low = read_u8(&mut self.r)? as usize;
+                    (high << 8) + low
+                };
+
+                let mut b = vec![0; length];
+                self.r.read_exact(&mut b[..])?;
+
+                Ok(b)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn read_f64(&mut self) -> io::Result<f64> {
+        match self.peek()? {
+            Header::DoubleZero => {
+                self.consume(1);
+                Ok(0f64)
+            }
+            Header::DoubleOne => {
+                self.consume(1);
+                Ok(1f64)
+            }
+            Header::Double8 => {
+                self.consume(1);
+                let v = read_i8(&mut self.r)?;
+                Ok(v as f64)
+            }
+            Header::Double16 => {
+                self.consume(1);
+                let v = read_i16(&mut self.r)?;
+                Ok(v as f64)
+            }
+            Header::Double32 => {
+                self.consume(1);
+                let v = read_i32(&mut self.r)? as f64;
+                Ok(0.001f64 * v)
+            }
+            Header::Double64 => {
+                self.consume(1);
+                read_f64(&mut self.r)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn read_date(&mut self) -> io::Result<SystemTime> {
+        match self.peek()? {
+            Header::Date32 => {
+                self.consume(1);
+                let unix_mills = (read_i32(&mut self.r)? as i64) * 60000i64;
+                Ok(misc::millis_to_system_time(unix_mills))
+            }
+            Header::Date64 => {
+                self.consume(1);
+                let v = read_i64(&mut self.r)?;
+                Ok(misc::millis_to_system_time(v))
+            }
+            _ => unreachable!(),
+        }
+    }
+}
 
 #[inline]
-fn read_binary<R>(_ctx: &mut Context, r: &mut R, dst: &mut Vec<u8>, n: usize) -> io::Result<()>
+fn read_binary<R>(r: &mut R, dst: &mut Vec<u8>, n: usize) -> io::Result<()>
 where
     R: io::Read,
 {
@@ -16,17 +458,11 @@ where
 }
 
 #[inline]
-fn read_binary_chunked<R>(
-    ctx: &mut Context,
-    r: &mut R,
-    dst: &mut Vec<u8>,
-    n: usize,
-    is_final: bool,
-) -> io::Result<()>
+fn read_binary_chunked<R>(r: &mut R, dst: &mut Vec<u8>, n: usize, is_final: bool) -> io::Result<()>
 where
     R: io::Read,
 {
-    read_binary(ctx, r, dst, n)?;
+    read_binary(r, dst, n)?;
     if is_final {
         return Ok(());
     }
@@ -40,7 +476,7 @@ where
                 let low = read_u8(r)? as usize;
                 (high << 8) + low
             };
-            read_binary_chunked(ctx, r, dst, length, false)
+            read_binary_chunked(r, dst, length, false)
         }
         BC_BINARY => {
             let length = {
@@ -48,11 +484,11 @@ where
                 let low = read_u8(r)? as usize;
                 (high << 8) + low
             };
-            read_binary_chunked(ctx, r, dst, length, true)
+            read_binary_chunked(r, dst, length, true)
         }
         0x20..=0x2f => {
             let length = (code - 0x20) as usize;
-            read_binary_chunked(ctx, r, dst, length, true)
+            read_binary_chunked(r, dst, length, true)
         }
         0x34..=0x37 => {
             let length = {
@@ -61,7 +497,7 @@ where
 
                 (high << 8) + low
             };
-            read_binary_chunked(ctx, r, dst, length, true)
+            read_binary_chunked(r, dst, length, true)
         }
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -288,12 +724,14 @@ where
 {
     match tag {
         0x00..=0x1f => {
+            // string direct
             let length = tag as usize - 0x00;
             let mut s = String::with_capacity(length);
             read_utf8(r, &mut s, length)?;
             Ok(Some(Value::from(s)))
         }
         0x20..=0x2f => {
+            // binary direct
             let length = tag as usize - 0x20;
             let mut b = vec![0; length];
             r.read_exact(&mut b[..])?;
@@ -301,6 +739,7 @@ where
             Ok(Some(Value::from(b)))
         }
         0x30..=0x33 => {
+            // string short
             let length = {
                 let high = (tag - 0x30) as usize;
                 let low = read_u8(r)? as usize;
@@ -311,6 +750,7 @@ where
             Ok(Some(Value::from(s)))
         }
         0x34..=0x37 => {
+            // binary short
             let length = {
                 let high = tag as usize - 0x34;
                 let low = read_u8(r)? as usize;
@@ -332,7 +772,7 @@ where
 
             let mut b = Vec::<u8>::with_capacity(length + length / 2);
 
-            read_binary_chunked(ctx, r, &mut b, length, false)?;
+            read_binary_chunked(r, &mut b, length, false)?;
 
             Ok(Some(Value::from(b)))
         }
@@ -471,6 +911,7 @@ where
             Ok(Some(Value::from(misc::millis_to_system_time(unix_mills))))
         }
         0x70..=0x77 => {
+            // typed list direct
             let length = tag as usize - 0x70;
             let class = read_string(r)?;
 
@@ -481,6 +922,7 @@ where
             Ok(Some(Value::from(v)))
         }
         0x78..=0x7f => {
+            // untyped list direct
             let length = tag as usize - 0x78;
 
             let mut v = Vec::<Value>::with_capacity(length);

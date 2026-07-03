@@ -1,7 +1,7 @@
-use crate::codec::{self, Context};
+use crate::codec::{self, Header};
 use crate::error::Error;
 use crate::value::Value;
-use serde::de;
+use serde::de::{self, DeserializeSeed as _, Deserializer as _};
 use serde::forward_to_deserialize_any;
 use std::io;
 
@@ -13,8 +13,7 @@ use std::io;
 /// class-definition references, so several objects of the same class can be
 /// read from one stream.
 pub struct Deserializer<R> {
-    reader: R,
-    context: Context,
+    r: codec::Reader<R>,
 }
 
 impl<R> Deserializer<R>
@@ -23,14 +22,14 @@ where
 {
     pub fn new(reader: R) -> Self {
         Self {
-            reader,
-            context: Context::default(),
+            r: codec::Reader::new(reader),
         }
     }
 
     /// Decodes the next hessian value from the stream.
     pub fn read_value(&mut self) -> crate::Result<Value> {
-        codec::get_value(&mut self.context, &mut self.reader).map_err(Error::io)
+        // codec::get_value(&mut self.context, &mut self.reader).map_err(Error::io)
+        todo!()
     }
 }
 
@@ -44,14 +43,73 @@ where
     where
         V: de::Visitor<'de>,
     {
-        self.read_value()?.deserialize_any(visitor)
+        match self.r.peek()? {
+            Header::Null => {
+                self.r.read_null()?;
+                visitor.visit_unit()
+            }
+            Header::Boolean(_) => {
+                let b = self.r.read_bool()?;
+                visitor.visit_bool(b)
+            }
+            Header::Int0(_) | Header::Int8(_) | Header::Int16(_) | Header::Int32 => {
+                let i = self.r.read_i32()?;
+                visitor.visit_i32(i)
+            }
+            Header::Long0(_)
+            | Header::Long8(_)
+            | Header::Long16(_)
+            | Header::Long32
+            | Header::Long64 => {
+                let i = self.r.read_i64()?;
+                visitor.visit_i64(i)
+            }
+            Header::StringDirect(_)
+            | Header::StringShort(_)
+            | Header::StringChunk
+            | Header::StringFinal => {
+                let s = self.r.read_string()?;
+                visitor.visit_string(s)
+            }
+            Header::BinaryDirect(_)
+            | Header::BinaryShort(_)
+            | Header::BinaryChunk
+            | Header::BinaryFinal => {
+                let b = self.r.read_binary()?;
+                visitor.visit_byte_buf(b)
+            }
+            Header::DoubleZero
+            | Header::DoubleOne
+            | Header::Double8
+            | Header::Double16
+            | Header::Double32
+            | Header::Double64 => {
+                let f = self.r.read_f64()?;
+                visitor.visit_f64(f)
+            }
+            Header::BeginTypedList0(_) | Header::BeginUntypedList0(_) => {
+                let (_class, length) = self.r.begin_list()?;
+                visitor.visit_seq(SeqAccess::new(self, length))
+            }
+            Header::BeginUntypedMap | Header::BeginTypedMap => {
+                let _class = self.r.begin_map()?;
+                visitor.visit_map(MapAccess::new(self))
+            }
+            other => todo!("unsupported tag {:?}", other),
+        }
     }
 
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: de::Visitor<'de>,
     {
-        self.read_value()?.deserialize_option(visitor)
+        match self.r.peek()? {
+            Header::Null => {
+                self.r.read_null()?;
+                visitor.visit_none()
+            }
+            _ => visitor.visit_some(self),
+        }
     }
 
     fn deserialize_enum<V>(
@@ -73,10 +131,76 @@ where
     }
 }
 
+struct MapAccess<'a, R: 'a> {
+    de: &'a mut Deserializer<R>,
+    idx: usize,
+}
+
+impl<'a, R: 'a> MapAccess<'a, R> {
+    #[inline]
+    fn new(de: &'a mut Deserializer<R>) -> MapAccess<'a, R> {
+        MapAccess { de, idx: 0 }
+    }
+}
+
+impl<'de, 'a, R: io::Read + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
+    type Error = Error;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
+    where
+        K: de::DeserializeSeed<'de>,
+    {
+        match self.de.r.peek()? {
+            Header::End => {
+                self.de.r.consume(1);
+                Ok(None)
+            }
+            _ => Ok(Some(seed.deserialize(&mut *self.de)?)),
+        }
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        seed.deserialize(&mut *self.de)
+    }
+}
+
+struct SeqAccess<'a, R: 'a> {
+    de: &'a mut Deserializer<R>,
+    remaining: usize,
+}
+
+impl<'a, R: 'a> SeqAccess<'a, R> {
+    fn new(de: &'a mut Deserializer<R>, size: usize) -> Self {
+        SeqAccess {
+            de,
+            remaining: size,
+        }
+    }
+}
+
+impl<'de, 'a, R: io::Read + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
+    type Error = Error;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
+    where
+        T: de::DeserializeSeed<'de>,
+    {
+        if self.remaining == 0 {
+            return Ok(None);
+        }
+        self.remaining -= 1;
+        seed.deserialize(&mut *self.de).map(Some)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::codec as encode;
+    use crate::codec::Context;
     use crate::serde::{from_slice, to_vec};
     use serde::{Deserialize, Serialize};
 
