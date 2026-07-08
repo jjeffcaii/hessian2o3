@@ -8,8 +8,9 @@ A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian
 
 - **Encoding** — serialize Rust values to Hessian 2.0 binary format
 - **Decoding** — deserialize Hessian 2.0 binary data into a dynamic `Value` type
-- **serde integration** — encode any `serde::Serialize` type via `to_vec` / `to_writer`
+- **serde integration** — encode/decode any `serde::Serialize` / `serde::Deserialize` type via `to_vec` / `to_writer` / `from_slice` / `from_reader`
 - **`#[derive(Hessian)]`** — auto-implement `HessianSerialize` / `HessianDeserialize` for structs mapped to Java classes
+- **`hessian!` macro** — build a `Value` (map, list, object, or scalar) from a JSON-like literal, similar to `serde_json::json!`
 
 ## QuickStart
 
@@ -30,6 +31,44 @@ use serde::Serialize;
 struct Point { x: i32, y: i32 }
 
 let bytes = to_vec(&Point { x: 1, y: 2 })?;
+```
+
+### Decoding with serde
+
+```rust
+use hessian2::from_slice;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct Point { x: i32, y: i32 }
+
+let point: Point = from_slice(&bytes)?;
+```
+
+### Building a `Value` with the `hessian!` macro
+
+```rust
+use hessian2::hessian;
+
+// map
+let user = hessian!({
+    "id": 123,
+    "name": "Jerry",
+    "age": 18,
+});
+
+// a "$class" entry turns the literal into a Value::Object instead of a Value::Map
+let user_obj = hessian!({
+    "$class": "com.example.User",
+    "id": 123,
+    "name": "Jerry",
+    "age": 18,
+});
+
+// lists, scalars, null, and variables all work too
+let list = hessian!([1, "two", [3, 4], null]);
+let age = 18;
+let v = hessian!(age);
 ```
 
 ### Encoding a Java object with `#[derive(Hessian)]`
