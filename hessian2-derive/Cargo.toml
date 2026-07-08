@@ -1,0 +1,22 @@
+[package]
+name = "hessian2-derive"
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+readme = "README.md"
+authors = ["Jeffsky Tsai <jjeffcaii@outlook.com>"]
+repository = "https://github.com/jjeffcaii/hessian2o3"
+homepage = "https://github.com/jjeffcaii/hessian2o3"
+description = "A Rust implementation of Hessian 2.0 Serialization Protocol."
+include = [
+    "**/*.rs",
+    "Cargo.toml",
+]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "1", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"

@@ -1,4 +1,7 @@
-use hessian2o3::{Hessian, hessian_from_slice, hessian_to_vec};
+#[macro_use]
+extern crate log;
+
+use hessian2::{Hessian, hessian_from_slice, hessian_to_vec};
 
 // ── Section 1: simple struct ──────────────────────────────────────────────
 #[derive(Hessian, Debug, PartialEq)]
@@ -37,21 +40,23 @@ struct Product {
 }
 
 fn main() {
+    pretty_env_logger::try_init_timed().ok();
+
     // ── Section 1 ──
-    println!("=== Simple struct ===");
+    info!("=== Simple struct ===");
     let user = User {
         id: 1,
         name: String::from("Alice"),
         age: 30,
     };
     let bytes = hessian_to_vec(&user).unwrap();
-    println!("User: {}", hex::encode(&bytes));
+    info!("User: {}", hex::encode(&bytes));
     let back: User = hessian_from_slice(&bytes).unwrap();
     assert_eq!(user, back);
-    println!("Decoded: {:?}\n", back);
+    info!("Decoded: {:?}\n", back);
 
     // ── Section 2 ──
-    println!("=== Nested objects (class-ref reuse) ===");
+    info!("=== Nested objects (class-ref reuse) ===");
     let uwaddr = UserWithAddress {
         id: 2,
         name: String::from("Bob"),
@@ -66,29 +71,29 @@ fn main() {
     };
     let bytes = hessian_to_vec(&uwaddr).unwrap();
     let hex_str = hex::encode(&bytes);
-    println!("UserWithAddress: {}", hex_str);
+    info!("UserWithAddress: {}", hex_str);
     // "com.example.Address" in hex: 636f6d2e6578616d706c652e41646472657373
     let class_def_count = hex_str
         .matches("636f6d2e6578616d706c652e41646472657373")
         .count();
-    println!(
+    info!(
         "Address class definition appears {} time(s) (expected 1 — second instance reuses ref)",
         class_def_count
     );
     let back: UserWithAddress = hessian_from_slice(&bytes).unwrap();
     assert_eq!(uwaddr, back);
-    println!("Decoded: {:?}\n", back);
+    info!("Decoded: {:?}\n", back);
 
     // ── Section 3 ──
-    println!("=== Field rename (snake_case → camelCase) ===");
+    info!("=== Field rename (snake_case → camelCase) ===");
     let product = Product {
         product_id: 42,
         product_name: String::from("Widget"),
     };
     let bytes = hessian_to_vec(&product).unwrap();
-    println!("Product: {}", hex::encode(&bytes));
-    println!("(wire fields are 'productId' / 'productName', not Rust's snake_case names)");
+    info!("Product: {}", hex::encode(&bytes));
+    info!("(wire fields are 'productId' / 'productName', not Rust's snake_case names)");
     let back: Product = hessian_from_slice(&bytes).unwrap();
     assert_eq!(product, back);
-    println!("Decoded: {:?}", back);
+    info!("Decoded: {:?}", back);
 }

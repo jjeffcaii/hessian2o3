@@ -1,4 +1,4 @@
-# hessian2o3
+# Hessian2
 
 A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian.caucho.com/doc/hessian-serialization.html), commonly used for Java/Dubbo RPC interop.
 
@@ -17,13 +17,13 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-hessian2o3 = { path = "." }
+hessian2 = { path = "." }
 ```
 
 ### Encoding with serde
 
 ```rust
-use hessian2o3::to_vec;
+use hessian2::to_vec;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -35,7 +35,7 @@ let bytes = to_vec(&Point { x: 1, y: 2 })?;
 ### Encoding a Java object with `#[derive(Hessian)]`
 
 ```rust
-use hessian2o3::{Hessian, hessian_to_vec};
+use hessian2::{Hessian, hessian_to_vec};
 
 #[derive(Hessian)]
 #[hessian(class = "com.example.Point")]
@@ -51,7 +51,7 @@ let bytes = hessian_to_vec(&Point { x: 1, y: 2 })?;
 ### Decoding a Java object with `#[derive(Hessian)]`
 
 ```rust
-use hessian2o3::{Hessian, hessian_from_slice};
+use hessian2::{Hessian, hessian_from_slice};
 
 #[derive(Hessian)]
 #[hessian(class = "com.example.Point")]
@@ -67,7 +67,7 @@ let point: Point = hessian_from_slice(&bytes)?;
 ### Decoding into `Value`
 
 ```rust
-use hessian2o3::codec::{get_value, Context};
+use hessian2::codec::{get_value, Context};
 
 let data: &[u8] = &[ /* hessian bytes */ ];
 let mut ctx = Context::default();

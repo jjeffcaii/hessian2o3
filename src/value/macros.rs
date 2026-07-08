@@ -90,7 +90,7 @@ impl ObjectBuilder {
 /// declaration order.
 ///
 /// ```
-/// use hessian2o3::hessian;
+/// use hessian2::hessian;
 ///
 /// let v = hessian!({
 ///     "id": 123,

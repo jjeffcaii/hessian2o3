@@ -31,7 +31,7 @@ pub use hessian::{
     HessianDeserialize, HessianSerialize, hessian_from_reader, hessian_from_slice, hessian_to_vec,
     hessian_to_writer,
 };
-pub use hessian2o3_derive::Hessian;
+pub use hessian2_derive::Hessian;
 
 pub type Result<T> = std::result::Result<T, error::Error>;
 

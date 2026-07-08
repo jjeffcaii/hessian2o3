@@ -48,18 +48,18 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
 
     let field_serializers = rust_idents.iter().map(|ident| {
         quote! {
-            ::hessian2o3::HessianSerialize::hessian_serialize(&self.#ident, w, ctx)?;
+            ::hessian2::HessianSerialize::hessian_serialize(&self.#ident, w, ctx)?;
         }
     });
 
     Ok(quote! {
-        impl ::hessian2o3::HessianSerialize for #name {
+        impl ::hessian2::HessianSerialize for #name {
             fn hessian_serialize<W: ::std::io::Write>(
                 &self,
                 w: &mut W,
-                ctx: &mut ::hessian2o3::codec::Context,
+                ctx: &mut ::hessian2::codec::Context,
             ) -> ::std::io::Result<()> {
-                ::hessian2o3::codec::begin_object(
+                ::hessian2::codec::begin_object(
                     w,
                     ctx,
                     #class_name,
@@ -70,12 +70,12 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             }
         }
 
-        impl ::hessian2o3::HessianDeserialize for #name {
+        impl ::hessian2::HessianDeserialize for #name {
             fn hessian_deserialize(
-                value: ::hessian2o3::value::Value,
+                value: ::hessian2::value::Value,
             ) -> ::std::io::Result<Self> {
                 match value {
-                    ::hessian2o3::value::Value::Object(obj) => {
+                    ::hessian2::value::Value::Object(obj) => {
                         #(
                             let mut #rust_idents: ::std::option::Option<#field_types> =
                                 ::std::option::Option::None;
@@ -85,7 +85,7 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                                 #(
                                     #java_names => {
                                         #rust_idents = ::std::option::Option::Some(
-                                            ::hessian2o3::HessianDeserialize::hessian_deserialize(v)?,
+                                            ::hessian2::HessianDeserialize::hessian_deserialize(v)?,
                                         );
                                     }
                                 )*
@@ -104,7 +104,7 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                         })
                     }
                     other => ::std::result::Result::Err(
-                        ::hessian2o3::hessian::unexpected_value("object", &other),
+                        ::hessian2::hessian::unexpected_value("object", &other),
                     ),
                 }
             }

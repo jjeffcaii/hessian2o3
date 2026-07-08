@@ -283,11 +283,11 @@ where
     }
 }
 
-// hessian2o3's `Serializer` drops enum variant tags entirely for
+// hessian2's `Serializer` drops enum variant tags entirely for
 // newtype/tuple/struct variants (see `value::ser`): only unit variants
 // survive the round trip, encoded as a bare string. `deserialize_enum`
 // below can therefore only ever recover unit variants.
-const ENUM_TAG_LOST_MSG: &str = "hessian2o3 can only deserialize a unit enum variant (encoded as a string) from a Value; \
+const ENUM_TAG_LOST_MSG: &str = "hessian2 can only deserialize a unit enum variant (encoded as a string) from a Value; \
      tuple/struct/newtype variants lose their tag when serialized and cannot be recovered";
 
 impl<'de> Deserializer<'de> for Value {

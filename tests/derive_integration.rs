@@ -1,4 +1,4 @@
-use hessian2o3::{Hessian, hessian_from_slice, hessian_to_vec};
+use hessian2::{Hessian, hessian_from_slice, hessian_to_vec};
 
 #[derive(Hessian, Debug, PartialEq)]
 #[hessian(class = "com.example.Point")]
@@ -19,7 +19,7 @@ fn test_derive_simple_struct() {
 }
 
 #[derive(Hessian, Debug, PartialEq)]
-#[hessian(class = "com.hessian2o3.User")]
+#[hessian(class = "com.example.User")]
 struct User {
     #[hessian(rename = "id")]
     id: i64,
@@ -30,9 +30,9 @@ struct User {
 }
 
 #[test]
-fn test_derive_with_rename() {
+fn test_derive_with_rename() -> anyhow::Result<()> {
     // Expected for User{id:1234, name:"杨幂", age:18}:
-    //  43 13 "com.hessian2o3.User"   C + class name (19 chars)
+    //  43 13 "com.example.User"   C + class name (19 chars)
     //  93                            field count 3
     //  02 6964                       "id"
     //  04 6e616d65                   "name"
@@ -45,16 +45,18 @@ fn test_derive_with_rename() {
         id: 1234,
         name: String::from("杨幂"),
         age: 18,
-    })
-    .unwrap();
+    })?;
+
     assert_eq!(
-        "4313636f6d2e6865737369616e326f332e5573657293026964046e616d650361676560fcd202e69da8e5b982a2",
+        "4310636f6d2e6578616d706c652e5573657293026964046e616d650361676560fcd202e69da8e5b982a2",
         hex::encode(&bytes)
     );
+
+    Ok(())
 }
 
 #[derive(Hessian, Debug, PartialEq)]
-#[hessian(class = "com.hessian2o3.Address")]
+#[hessian(class = "com.example.Address")]
 struct Address {
     #[hessian(rename = "city")]
     city: String,
@@ -63,7 +65,7 @@ struct Address {
 }
 
 #[derive(Hessian, Debug, PartialEq)]
-#[hessian(class = "com.hessian2o3.UserFull")]
+#[hessian(class = "com.example.UserFull")]
 struct UserFull {
     #[hessian(rename = "id")]
     id: i64,
@@ -80,13 +82,13 @@ struct UserFull {
 #[test]
 fn test_nested_objects_match_encode_test() {
     // Expected output matches encode::tests::test_object exactly,
-    // except the outer class is "com.hessian2o3.UserFull" not "com.hessian2o3.User"
+    // except the outer class is "com.example.UserFull" not "com.example.User"
     // (different name to avoid collision with the User struct above).
     //
     // Byte structure:
-    //  C "com.hessian2o3.UserFull" (24 chars) 5-fields [id,name,age,home,company]
+    //  C "com.example.UserFull" (24 chars) 5-fields [id,name,age,home,company]
     //  0x60  id=1234  name="杨幂"  age=18
-    //  C "com.hessian2o3.Address" (22 chars) 2-fields [city,zipcode]
+    //  C "com.example.Address" (22 chars) 2-fields [city,zipcode]
     //  0x61  "Shanghai" "200000"
     //  0x61  "Beijing"  "100000"   ← class def NOT repeated
     let user = UserFull {
@@ -105,25 +107,9 @@ fn test_nested_objects_match_encode_test() {
     let bytes = hessian_to_vec(&user).unwrap();
     let s = hex::encode(&bytes);
 
-    // The Address class definition (43 16 "com.hessian2o3.Address" ...) must appear exactly once.
-    let addr_class_def = "4316636f6d2e6865737369616e326f332e41646472657373";
     assert_eq!(
-        1,
-        s.matches(addr_class_def).count(),
-        "Address class def must appear exactly once"
-    );
-
-    // The second Address instance must start with object-ref 0x61 (not a new C definition).
-    // Both Address instances write 0x61; count must be 2.
-    // We find the first 0x61 after the class definition, confirming both use the same ref.
-    let addr_ref = "61";
-    let count = s
-        .match_indices(addr_ref)
-        .filter(|(i, _)| *i > s.find(addr_class_def).unwrap())
-        .count();
-    assert!(
-        count >= 2,
-        "Expected at least 2 address object refs after class def, got {count}"
+        "4314636f6d2e6578616d706c652e5573657246756c6c95026964046e616d650361676504686f6d6507636f6d70616e7960fcd202e69da8e5b982a24313636f6d2e6578616d706c652e41646472657373920463697479077a6970636f646561085368616e676861690632303030303061074265696a696e6706313030303030",
+        &s,
     );
 }
 
