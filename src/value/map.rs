@@ -132,8 +132,7 @@ pub struct Values<'a> {
 
 type MapImpl = HashMap<Key, Value>;
 
-#[derive(PartialEq)]
-#[derive(Default)]
+#[derive(PartialEq, Default)]
 pub struct Map {
     class: Option<Cachestr>,
     map: MapImpl,
@@ -234,8 +233,7 @@ impl Map {
 
     #[inline]
     pub fn append(&mut self, other: &mut Self) {
-        self.map
-            .extend(std::mem::take(&mut other.map))
+        self.map.extend(std::mem::take(&mut other.map))
     }
 
     pub fn entry<K>(&mut self, key: K) -> Entry<'_>
@@ -317,7 +315,6 @@ pub struct Iter<'a> {
 pub struct IterMut<'a> {
     iter: IterMutImpl<'a>,
 }
-
 
 impl IntoIterator for Map {
     type Item = (Key, Value);
