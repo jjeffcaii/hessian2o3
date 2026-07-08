@@ -1,7 +1,7 @@
-use crate::codec::{self, Header};
+use crate::cachestr::Cachestr;
+use crate::codec::{self, Fields, Header};
 use crate::error::Error;
-use crate::value::Value;
-use serde::de::{self, DeserializeSeed as _, Deserializer as _};
+use serde::de::{self, IntoDeserializer as _};
 use serde::forward_to_deserialize_any;
 use std::io;
 
@@ -25,12 +25,6 @@ where
             r: codec::Reader::new(reader),
         }
     }
-
-    /// Decodes the next hessian value from the stream.
-    pub fn read_value(&mut self) -> crate::Result<Value> {
-        // codec::get_value(&mut self.context, &mut self.reader).map_err(Error::io)
-        todo!()
-    }
 }
 
 impl<'de, R> de::Deserializer<'de> for &mut Deserializer<R>
@@ -43,7 +37,9 @@ where
     where
         V: de::Visitor<'de>,
     {
-        match self.r.peek()? {
+        let header = self.r.peek()?;
+        debug!("begin deserialize_any: header={:?}", header);
+        match header {
             Header::Null => {
                 self.r.read_null()?;
                 visitor.visit_unit()
@@ -95,6 +91,15 @@ where
                 let _class = self.r.begin_map()?;
                 visitor.visit_map(MapAccess::new(self))
             }
+            Header::BeginClass => {
+                let class_ref = self.r.begin_class()?;
+                debug!("read class ok: class_ref={}", class_ref);
+                self.deserialize_any(visitor)
+            }
+            Header::BeginClassReference(_) => {
+                let (class, fields) = self.r.read_class()?;
+                visitor.visit_map(ObjectAccess::new(self, class, fields))
+            }
             other => todo!("unsupported tag {:?}", other),
         }
     }
@@ -121,7 +126,144 @@ where
     where
         V: de::Visitor<'de>,
     {
-        self.read_value()?.deserialize_enum(name, variants, visitor)
+        visitor.visit_enum(VariantAccess::new(self))
+    }
+
+    forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
+        bytes byte_buf unit unit_struct newtype_struct seq tuple
+        tuple_struct map struct identifier ignored_any
+    }
+}
+
+struct VariantAccess<'a, R: 'a> {
+    de: &'a mut Deserializer<R>,
+}
+
+impl<'a, R> VariantAccess<'a, R> {
+    fn new(de: &'a mut Deserializer<R>) -> Self {
+        VariantAccess { de }
+    }
+}
+
+impl<'de, 'a, R: io::Read + 'a> de::EnumAccess<'de> for VariantAccess<'a, R> {
+    type Error = Error;
+    type Variant = Self;
+
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        let v = seed.deserialize(&mut *self.de)?;
+        Ok((v, self))
+    }
+}
+
+impl<'de, 'a, R: io::Read + 'a> de::VariantAccess<'de> for VariantAccess<'a, R> {
+    type Error = Error;
+
+    fn unit_variant(self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
+    where
+        T: de::DeserializeSeed<'de>,
+    {
+        seed.deserialize(self.de)
+    }
+
+    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        de::Deserializer::deserialize_seq(self.de, visitor)
+    }
+
+    fn struct_variant<V>(
+        self,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        de::Deserializer::deserialize_struct(self.de, "", fields, visitor)
+    }
+}
+
+struct ObjectAccess<'a, R: 'a> {
+    de: &'a mut Deserializer<R>,
+    class: Cachestr,
+    fields: Fields,
+    index: usize,
+}
+
+impl<'a, R: 'a> ObjectAccess<'a, R> {
+    fn new(de: &'a mut Deserializer<R>, class: Cachestr, fields: Fields) -> Self {
+        Self {
+            de,
+            class,
+            fields,
+            index: 0,
+        }
+    }
+}
+
+impl<'de, 'a, R: io::Read + 'a> de::MapAccess<'de> for ObjectAccess<'a, R> {
+    type Error = Error;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
+    where
+        K: de::DeserializeSeed<'de>,
+    {
+        if self.index >= self.fields.len() {
+            return Ok(None);
+        }
+
+        let field = FieldName(Clone::clone(&self.fields[self.index]));
+        self.index += 1;
+
+        seed.deserialize(field).map(Some)
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        seed.deserialize(&mut *self.de)
+    }
+}
+
+struct FieldName(Cachestr);
+
+impl<'de> de::Deserializer<'de> for FieldName {
+    type Error = Error;
+
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        visitor.visit_str(self.0.as_ref())
+    }
+
+    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        visitor.visit_some(self)
+    }
+
+    fn deserialize_enum<V>(
+        self,
+        name: &'static str,
+        variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        visitor.visit_enum(self.0.into_deserializer())
     }
 
     forward_to_deserialize_any! {
@@ -350,12 +492,15 @@ mod tests {
 
         #[derive(Debug, PartialEq, Serialize, Deserialize)]
         enum Direction {
-            North,
+            East,
             South,
+            West,
+            North,
         }
 
-        let b = to_vec(&Direction::North)?;
-        assert_eq!(Direction::North, from_slice::<Direction>(&b)?);
+        let b = to_vec(&Direction::West)?;
+        let actual = from_slice::<Direction>(&b)?;
+        assert_matches!(Direction::West, actual);
 
         Ok(())
     }

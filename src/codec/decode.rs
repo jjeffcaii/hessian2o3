@@ -49,6 +49,9 @@ pub(crate) enum Header {
     BeginTypedMap,
     End,
 
+    BeginClass,
+    BeginClassReference(u8),
+
     Unknown,
 }
 
@@ -132,10 +135,52 @@ where
             BC_MAP_UNTYPED => Header::BeginUntypedMap,
             BC_MAP => Header::BeginTypedMap,
             BC_END => Header::End,
+
+            BC_CLASS => Header::BeginClass,
+            0x60..=0x6f => Header::BeginClassReference(*first),
+
             _ => Header::Unknown,
         };
 
         Ok(header)
+    }
+
+    pub(crate) fn read_class(&mut self) -> io::Result<(Cachestr, Fields)> {
+        match self.peek()? {
+            Header::BeginClassReference(i) => {
+                self.consume(1);
+                let class_ref = i - 0x60;
+                let (class, fields) = self
+                    .ctx
+                    .nth(class_ref as usize)
+                    .ok_or_else(|| io::ErrorKind::InvalidData)?;
+                Ok((class, fields))
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub(crate) fn begin_class(&mut self) -> io::Result<usize> {
+        match self.peek()? {
+            Header::BeginClass => {
+                self.consume(1);
+
+                let class = Cachestr::from(self.read_string()?);
+                let n = self.read_i32()?;
+
+                let mut fields = Fields::default();
+                for _ in 0..n {
+                    let field = Cachestr::from(self.read_string()?);
+                    fields.push(field);
+                }
+
+                debug!("read class '{}': fields={:?}", class.as_ref(), fields);
+
+                let idx = self.ctx.insert(class, fields);
+                Ok(idx)
+            }
+            _ => unreachable!(),
+        }
     }
 
     pub(crate) fn begin_map(&mut self) -> io::Result<Option<Cachestr>> {

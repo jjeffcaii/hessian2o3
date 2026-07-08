@@ -18,10 +18,9 @@ pub struct Context {
 }
 
 impl Context {
-    // class: &str, fields: &[S]
-
-    pub(crate) fn insert(&mut self, class: Cachestr, fields: Fields) {
-        self.class_refs.insert(class, fields);
+    pub(crate) fn insert(&mut self, class: Cachestr, fields: Fields) -> usize {
+        let (idx, _) = self.class_refs.insert_full(class, fields);
+        idx
     }
 
     pub(crate) fn nth(&self, i: usize) -> Option<(Cachestr, Fields)> {

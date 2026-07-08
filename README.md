@@ -9,7 +9,7 @@ A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian
 - **Encoding** — serialize Rust values to Hessian 2.0 binary format
 - **Decoding** — deserialize Hessian 2.0 binary data into a dynamic `Value` type
 - **serde integration** — encode any `serde::Serialize` type via `to_vec` / `to_writer`
-- **`#[derive(Hessian)]`** — auto-implement `HessianSerialize` for structs mapped to Java classes
+- **`#[derive(Hessian)]`** — auto-implement `HessianSerialize` / `HessianDeserialize` for structs mapped to Java classes
 
 ## QuickStart
 
@@ -46,6 +46,22 @@ struct Point {
 }
 
 let bytes = hessian_to_vec(&Point { x: 1, y: 2 })?;
+```
+
+### Decoding a Java object with `#[derive(Hessian)]`
+
+```rust
+use hessian2o3::{Hessian, hessian_from_slice};
+
+#[derive(Hessian)]
+#[hessian(class = "com.example.Point")]
+struct Point {
+    x: i32,
+    #[hessian(rename = "yCoord")]
+    y: i32,
+}
+
+let point: Point = hessian_from_slice(&bytes)?;
 ```
 
 ### Decoding into `Value`

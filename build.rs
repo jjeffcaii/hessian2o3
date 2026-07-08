@@ -17,6 +17,8 @@ fn main() {
             "java.util.concurrent.ConcurrentHashMap",
             // others
             "java.math.BigDecimal",
+            "id",
+            "name",
         ])
         .write_to_file(&Path::new(&env::var("OUT_DIR").unwrap()).join("cachestr.rs"))
         .unwrap();

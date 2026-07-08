@@ -472,7 +472,7 @@ mod tests {
         assert_ser!(false, Value::from(false));
         assert_ser!(123i32, Value::from(123i32));
         assert_ser!(123i64, Value::from(123i64));
-        assert_ser!(3.14f64, Value::from(3.14f64));
+        assert_ser!(3.15f64, Value::from(3.15f64));
         assert_ser!("foobar", Value::from("foobar".to_owned()));
 
         Ok(())
