@@ -5,7 +5,7 @@ use std::borrow::Borrow;
 use std::collections::hash_map::{self, HashMap};
 use std::fmt::{self, Debug, Display};
 use std::hash::Hash;
-use std::{mem, ops};
+use std::ops;
 
 pub(crate) type Key = PrimitiveValue;
 
@@ -133,6 +133,7 @@ pub struct Values<'a> {
 type MapImpl = HashMap<Key, Value>;
 
 #[derive(PartialEq)]
+#[derive(Default)]
 pub struct Map {
     class: Option<Cachestr>,
     map: MapImpl,
@@ -234,7 +235,7 @@ impl Map {
     #[inline]
     pub fn append(&mut self, other: &mut Self) {
         self.map
-            .extend(mem::replace(&mut other.map, MapImpl::default()))
+            .extend(std::mem::take(&mut other.map))
     }
 
     pub fn entry<K>(&mut self, key: K) -> Entry<'_>
@@ -317,14 +318,6 @@ pub struct IterMut<'a> {
     iter: IterMutImpl<'a>,
 }
 
-impl Default for Map {
-    fn default() -> Self {
-        Map {
-            class: None,
-            map: MapImpl::default(),
-        }
-    }
-}
 
 impl IntoIterator for Map {
     type Item = (Key, Value);

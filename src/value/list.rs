@@ -68,6 +68,11 @@ impl List {
         self.l.len()
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.l.is_empty()
+    }
+
     pub fn iter(&self) -> Iter<'_> {
         Iter {
             iter: self.l.iter(),

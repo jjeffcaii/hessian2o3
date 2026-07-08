@@ -91,7 +91,7 @@ where
             buf
         };
 
-        let first = buf.first().ok_or_else(|| io::ErrorKind::UnexpectedEof)?;
+        let first = buf.first().ok_or(io::ErrorKind::UnexpectedEof)?;
         let header = match *first {
             0x00..=0x1f => Header::StringDirect(*first),
             0x30..=0x33 => Header::StringShort(*first),
@@ -153,7 +153,7 @@ where
                 let (class, fields) = self
                     .ctx
                     .nth(class_ref as usize)
-                    .ok_or_else(|| io::ErrorKind::InvalidData)?;
+                    .ok_or(io::ErrorKind::InvalidData)?;
                 Ok((class, fields))
             }
             _ => unreachable!(),
@@ -249,7 +249,7 @@ where
         match self.peek()? {
             Header::StringDirect(n) => {
                 self.consume(1);
-                let length = n as usize - 0x00;
+                let length = n as usize;
                 let mut s = String::with_capacity(length);
                 read_utf8(&mut self.r, &mut s, length)?;
                 Ok(s)
@@ -617,7 +617,7 @@ where
             read_utf8_chunked(r, dst, length, true)
         }
         0x00..=0x1f => {
-            let length = tag as usize - 0x00;
+            let length = tag as usize;
             read_utf8_chunked(r, dst, length, true)
         }
         0x30..=0x33 => {
@@ -705,7 +705,7 @@ where
 
     let class = match tag {
         0x00..=0x1f => {
-            let length = tag as usize - 0x00;
+            let length = tag as usize;
             let mut s = String::with_capacity(length);
             read_utf8(r, &mut s, length)?;
             Some(Cachestr::from(s))
@@ -770,7 +770,7 @@ where
     match tag {
         0x00..=0x1f => {
             // string direct
-            let length = tag as usize - 0x00;
+            let length = tag as usize;
             let mut s = String::with_capacity(length);
             read_utf8(r, &mut s, length)?;
             Ok(Some(Value::from(s)))
@@ -996,10 +996,8 @@ where
             let class = read_string(r)?.expect("class should exist");
             let n = {
                 let mut n = -1;
-                if let Value::Primitive(pv) = get_value(ctx, r)? {
-                    if let PrimitiveValue::Int(i) = pv {
-                        n = i
-                    }
+                if let Value::Primitive(PrimitiveValue::Int(i)) = get_value(ctx, r)? {
+                    n = i
                 }
                 n
             };
@@ -1088,7 +1086,7 @@ mod tests {
 
         let mut ctx = Context::default();
 
-        let b = vec![b'N'];
+        let b = [b'N'];
 
         let v = {
             let mut r = &b[..];
@@ -1288,7 +1286,7 @@ mod tests {
         let actual = get_value(&mut ctx, &mut r)?;
 
         let expect = Value::from(
-            vec!["foo", "bar", "qux"]
+            ["foo", "bar", "qux"]
                 .iter()
                 .map(|v| Value::from(v.to_string()))
                 .collect::<Vec<Value>>(),
@@ -1325,9 +1323,8 @@ mod tests {
     #[test]
     fn test_object() -> io::Result<()> {
         init();
-        for next in
-            ["4310636f6d2e6578616d706c652e5573657293026964046e616d650361676560fcd202e69da8e5b982a2"]
         {
+            let next = "4310636f6d2e6578616d706c652e5573657293026964046e616d650361676560fcd202e69da8e5b982a2";
             let mut ctx = Context::default();
             let b = hex::decode(next).unwrap();
 
