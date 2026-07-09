@@ -49,6 +49,7 @@ fn main() {
         name: String::from("Alice"),
         age: 30,
     };
+
     let bytes = hessian_to_vec(&user).unwrap();
     info!("User: {}", hex::encode(&bytes));
     let back: User = hessian_from_slice(&bytes).unwrap();

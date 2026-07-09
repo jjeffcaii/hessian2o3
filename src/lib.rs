@@ -8,17 +8,19 @@
 #[cfg(test)]
 #[macro_use]
 extern crate assert_matches;
-extern crate core;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate smallvec;
 
 /// cached string
-pub(crate) mod cachestr {
+#[doc(hidden)]
+pub mod cachestr {
     include!(concat!(env!("OUT_DIR"), "/cachestr.rs"));
 }
 
 pub mod codec;
-mod de;
+pub mod de;
 pub(crate) mod error;
 pub mod hessian;
 mod misc;
@@ -28,8 +30,8 @@ pub mod value;
 
 pub use error::Error;
 pub use hessian::{
-    HessianDeserialize, HessianSerialize, hessian_from_reader, hessian_from_slice, hessian_to_vec,
-    hessian_to_writer,
+    hessian_from_reader, hessian_from_slice, hessian_to_vec, hessian_to_writer, HessianDeserialize,
+    HessianSerialize,
 };
 pub use hessian2_derive::Hessian;
 

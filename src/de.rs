@@ -1,13 +1,15 @@
 use crate::cachestr::Cachestr;
-use crate::codec::{self, Fields, Header};
+use crate::codec::{self, Fields, Header, HeaderFamily};
 use crate::error::Error;
-use serde::de::{self, IntoDeserializer as _};
+use crate::value::{Map, Object, Value};
+use serde::de::{self, Error as _, IntoDeserializer as _};
 use serde::forward_to_deserialize_any;
+use smallvec::SmallVec;
 use std::io;
 
 /// A hessian deserializer that reads values from an [`io::Read`] stream.
 ///
-/// Decoding is done in two steps: the byte-level core in [`crate::codec`]
+/// Decoding is done in two steps: the byte-level core in [`codec`]
 /// parses the stream into a [`Value`] tree, which then acts as the
 /// [`serde::Deserializer`] (see `value::de`). The [`Context`] carries
 /// class-definition references, so several objects of the same class can be
@@ -25,6 +27,237 @@ where
             r: codec::Reader::new(reader),
         }
     }
+
+    /// Decodes a single [`Value`] tree from the stream, preserving the
+    /// distinction between plain maps (`Value::Map`) and class-tagged
+    /// objects (`Value::Object`) that a generic `serde::Deserialize` for
+    /// `Value` cannot express, since `serde::de::Visitor` has no callback
+    /// that carries a class name alongside `visit_map`.
+    pub(crate) fn read_value(&mut self) -> Result<Value, Error> {
+        let header = self.r.peek()?;
+
+        let value = match header.family() {
+            HeaderFamily::Null => {
+                self.r.read_null()?;
+                Value::Null
+            }
+            HeaderFamily::Boolean => Value::from(self.r.read_bool()?),
+            HeaderFamily::Int => Value::from(self.r.read_i32()?),
+            HeaderFamily::Long => Value::from(self.r.read_i64()?),
+            HeaderFamily::Binary => Value::from(self.r.read_binary()?),
+            HeaderFamily::String => Value::from(self.r.read_string()?),
+            HeaderFamily::Double => Value::from(self.r.read_f64()?),
+            HeaderFamily::Date => Value::from(self.r.read_date()?),
+            HeaderFamily::List => {
+                let (_class, length) = self.r.begin_list()?;
+                let mut items = Vec::with_capacity(length);
+                for _ in 0..length {
+                    items.push(self.read_value()?);
+                }
+                Value::from(items)
+            }
+            HeaderFamily::Map => {
+                let class = self.r.begin_map()?;
+                let mut m = Map::new();
+                if let Some(class) = class {
+                    m.set_class(class);
+                }
+                loop {
+                    if let Header::End = self.r.peek()? {
+                        self.r.consume(1);
+                        break;
+                    }
+                    let key = match self.read_value()? {
+                        Value::Primitive(pv) => pv,
+                        other => {
+                            return Err(Error::custom(format!(
+                                "map key must be a hessian primitive value, but got: {:?}",
+                                other
+                            )));
+                        }
+                    };
+                    let val = self.read_value()?;
+                    m.insert(key, val);
+                }
+                Value::from(m)
+            }
+            HeaderFamily::Class => {
+                self.r.read_class()?;
+                self.read_value()?
+            }
+            HeaderFamily::ClassRef => {
+                let (class, fields) = self.r.read_class_ref()?;
+                let mut values = Vec::with_capacity(fields.len());
+                for _ in 0..fields.len() {
+                    values.push(self.read_value()?);
+                }
+                Value::from(Object::new(class, fields, values))
+            }
+        };
+
+        Ok(value)
+    }
+
+    /// Reads a boolean value.
+    pub fn read_bool(&mut self) -> Result<bool, Error> {
+        self.r.read_bool()
+    }
+
+    /// Reads an integer, accepting both int and long wire flavors.
+    pub fn read_i64(&mut self) -> Result<i64, Error> {
+        match self.r.peek()?.family() {
+            HeaderFamily::Int => {
+                let i = self.r.read_i32()?;
+                Ok(i as i64)
+            }
+            HeaderFamily::Long => self.r.read_i64(),
+            HeaderFamily::Double => {
+                let f = self.r.read_f64()?;
+                Ok(f as i64)
+            }
+            HeaderFamily::Date => {
+                let i = self.r.read_date()?;
+                Ok(i)
+            }
+            _ => self.r.read_i64(),
+        }
+    }
+
+    /// Reads an integer, accepting both int and long wire flavors;
+    /// errors if the value doesn't fit an i32.
+    pub fn read_i32(&mut self) -> Result<i32, Error> {
+        match self.r.peek()?.family() {
+            HeaderFamily::Int => self.r.read_i32(),
+            HeaderFamily::Long => match self.r.read_i64()?.try_into() {
+                Ok(i) => Ok(i),
+                Err(e) => Err(Error::custom(e)),
+            },
+            HeaderFamily::Double => {
+                // It's safe by saturating casting.
+                Ok(self.r.read_f64()? as i32)
+            }
+            _ => self.r.read_i32(),
+        }
+    }
+
+    /// Reads a double value.
+    pub fn read_f64(&mut self) -> Result<f64, Error> {
+        match self.r.peek()?.family() {
+            HeaderFamily::Int => Ok(self.r.read_i32()? as f64),
+            HeaderFamily::Long => Ok(self.r.read_i64()? as f64),
+            HeaderFamily::Double => self.r.read_f64(),
+            HeaderFamily::Date => Ok(self.r.read_date()? as f64),
+            _ => self.r.read_f64(),
+        }
+    }
+
+    /// Reads a string value.
+    pub fn read_string(&mut self) -> Result<String, Error> {
+        self.r.read_string()
+    }
+
+    /// Reads a binary value.
+    pub fn read_binary(&mut self) -> Result<Vec<u8>, Error> {
+        self.r.read_binary()
+    }
+
+    /// Consumes a null (`N`) if it is the next value, returning whether one
+    /// was consumed.
+    pub fn try_read_null(&mut self) -> Result<bool, Error> {
+        match self.r.peek()? {
+            Header::Null => {
+                self.r.read_null()?;
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    /// Begins reading a list, returning its element count. The caller must
+    /// then read exactly that many values.
+    pub fn begin_list(&mut self) -> Result<usize, Error> {
+        let (_class, length) = self.r.begin_list()?;
+        Ok(length)
+    }
+
+    /// Begins reading a hessian object: consumes any pending class
+    /// definitions (`C`) plus the object's class reference, and returns an
+    /// [`ObjectReader`] over its fields.
+    pub fn begin_object(&mut self) -> Result<ObjectReader<'_, R>, Error> {
+        match self.r.peek()?.family() {
+            HeaderFamily::Class => {
+                let class_ref = self.r.read_class()?;
+                debug!("read class ok: ref={:?}", class_ref);
+                self.begin_object()
+            }
+            HeaderFamily::ClassRef => {
+                let (class, fields) = self.r.read_class_ref()?;
+
+                if log_enabled!(log::Level::Debug) {
+                    let mut b: SmallVec<[u8; 128]> = smallvec![];
+                    let mut it = fields.iter();
+                    if let Some(f) = it.next() {
+                        use io::Write as _;
+                        write!(&mut b, "{}", f.as_ref())?;
+                        for f in it {
+                            write!(&mut b, ",{}", f.as_ref())?;
+                        }
+                    }
+                    let fields_str = unsafe { std::str::from_utf8_unchecked(&b[..]) };
+
+                    debug!(
+                        "read class_ref ok: class={}, fields=[{}]",
+                        class, fields_str
+                    );
+                }
+
+                Ok(ObjectReader::new(self, fields))
+            }
+            other => Err(Error::custom(format!("unexpect hessian type {}", other))),
+        }
+    }
+}
+
+/// Streaming access to the fields of a hessian object, created by
+/// [`Deserializer::begin_object`]. Field names come from the class
+/// definition in declaration order; after each `next_field`, exactly one of
+/// [`value`](ObjectReader::value) or [`skip_value`](ObjectReader::skip_value)
+/// must be called to consume the field's value.
+pub struct ObjectReader<'a, R> {
+    de: &'a mut Deserializer<R>,
+    fields: Fields,
+    index: usize,
+}
+
+impl<'a, R> ObjectReader<'a, R> {
+    #[inline]
+    fn new(de: &'a mut Deserializer<R>, fields: Fields) -> Self {
+        Self {
+            de,
+            fields,
+            index: 0,
+        }
+    }
+}
+
+impl<'a, R: io::Read> ObjectReader<'a, R> {
+    /// Returns the next field name, or `None` when all fields are consumed.
+    pub fn next_field(&mut self) -> Option<Cachestr> {
+        let field = self.fields.get(self.index)?;
+        debug!("**** next_field: {}", field.as_ref());
+        self.index += 1;
+        Some(Clone::clone(field))
+    }
+
+    /// Deserializes the current field's value.
+    pub fn value<T: crate::HessianDeserialize>(&mut self) -> Result<T, Error> {
+        T::hessian_deserialize(self.de)
+    }
+
+    /// Decodes and discards the current field's value.
+    pub fn skip_value(&mut self) -> Result<(), Error> {
+        self.de.read_value().map(drop)
+    }
 }
 
 impl<'de, R> de::Deserializer<'de> for &mut Deserializer<R>
@@ -39,68 +272,57 @@ where
     {
         let header = self.r.peek()?;
         debug!("begin deserialize_any: header={:?}", header);
-        match header {
-            Header::Null => {
+
+        match header.family() {
+            HeaderFamily::Null => {
                 self.r.read_null()?;
                 visitor.visit_unit()
             }
-            Header::Boolean(_) => {
+            HeaderFamily::Boolean => {
                 let b = self.r.read_bool()?;
                 visitor.visit_bool(b)
             }
-            Header::Int0(_) | Header::Int8(_) | Header::Int16(_) | Header::Int32 => {
+            HeaderFamily::Int => {
                 let i = self.r.read_i32()?;
                 visitor.visit_i32(i)
             }
-            Header::Long0(_)
-            | Header::Long8(_)
-            | Header::Long16(_)
-            | Header::Long32
-            | Header::Long64 => {
+            HeaderFamily::Long => {
                 let i = self.r.read_i64()?;
                 visitor.visit_i64(i)
             }
-            Header::StringDirect(_)
-            | Header::StringShort(_)
-            | Header::StringChunk
-            | Header::StringFinal => {
-                let s = self.r.read_string()?;
-                visitor.visit_string(s)
-            }
-            Header::BinaryDirect(_)
-            | Header::BinaryShort(_)
-            | Header::BinaryChunk
-            | Header::BinaryFinal => {
+            HeaderFamily::Binary => {
                 let b = self.r.read_binary()?;
                 visitor.visit_byte_buf(b)
             }
-            Header::DoubleZero
-            | Header::DoubleOne
-            | Header::Double8
-            | Header::Double16
-            | Header::Double32
-            | Header::Double64 => {
+            HeaderFamily::String => {
+                let s = self.r.read_string()?;
+                visitor.visit_string(s)
+            }
+            HeaderFamily::Double => {
                 let f = self.r.read_f64()?;
                 visitor.visit_f64(f)
             }
-            Header::BeginTypedList0(_) | Header::BeginUntypedList0(_) => {
+            HeaderFamily::Date => {
+                let unix_millis = self.r.read_date()?;
+                visitor.visit_i64(unix_millis)
+            }
+            HeaderFamily::List => {
                 let (_class, length) = self.r.begin_list()?;
                 visitor.visit_seq(SeqAccess::new(self, length))
             }
-            Header::BeginUntypedMap | Header::BeginTypedMap => {
+            HeaderFamily::Map => {
                 let _class = self.r.begin_map()?;
                 visitor.visit_map(MapAccess::new(self))
             }
-            Header::BeginClass => {
-                let class_ref = self.r.begin_class()?;
+            HeaderFamily::Class => {
+                let class_ref = self.r.read_class()?;
                 debug!("read class ok: class_ref={}", class_ref);
                 self.deserialize_any(visitor)
             }
-            Header::BeginClassReference(_) => {
-                let (class, fields) = self.r.read_class()?;
+            HeaderFamily::ClassRef => {
+                let (class, fields) = self.r.read_class_ref()?;
                 visitor.visit_map(ObjectAccess::new(self, class, fields))
             }
-            other => todo!("unsupported tag {:?}", other),
         }
     }
 

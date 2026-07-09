@@ -42,3 +42,26 @@ where
 {
     from_reader(v)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::value::Value;
+
+    fn init() {
+        pretty_env_logger::try_init_timed().ok();
+    }
+
+    #[test]
+    fn test() -> anyhow::Result<()> {
+        init();
+
+        let b = to_vec("hello world")?;
+
+        let v: Value = from_slice(&b)?;
+
+        info!("value: {}", v);
+
+        Ok(())
+    }
+}

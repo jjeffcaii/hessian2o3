@@ -1,10 +1,47 @@
 use super::tags::*;
 use crate::cachestr::Cachestr;
 use crate::codec::{Context, Fields};
-use crate::misc;
 use crate::value::{Map, Object, PrimitiveValue, Value};
+use crate::{misc, Error, Result};
+use serde::de::Error as _;
+use std::fmt;
 use std::io::{self, BufRead as _, BufReader, Read as _};
-use std::time::SystemTime;
+
+#[derive(Debug)]
+pub(crate) enum HeaderFamily {
+    Null,
+    Boolean,
+    Int,
+    Long,
+    Binary,
+    String,
+
+    Double,
+    Date,
+    List,
+    Map,
+    Class,
+    ClassRef,
+}
+
+impl fmt::Display for HeaderFamily {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HeaderFamily::Null => f.write_str("null"),
+            HeaderFamily::Boolean => f.write_str("boolean"),
+            HeaderFamily::Int => f.write_str("int"),
+            HeaderFamily::Long => f.write_str("long"),
+            HeaderFamily::Binary => f.write_str("binary"),
+            HeaderFamily::String => f.write_str("string"),
+            HeaderFamily::Double => f.write_str("double"),
+            HeaderFamily::Date => f.write_str("date"),
+            HeaderFamily::List => f.write_str("list"),
+            HeaderFamily::Map => f.write_str("map"),
+            HeaderFamily::Class => f.write_str("class"),
+            HeaderFamily::ClassRef => f.write_str("class_ref"),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(crate) enum Header {
@@ -51,8 +88,71 @@ pub(crate) enum Header {
 
     BeginClass,
     BeginClassReference(u8),
+}
 
-    Unknown,
+impl Header {
+    #[inline]
+    pub(crate) fn family(&self) -> HeaderFamily {
+        match self {
+            // null
+            Header::Null => HeaderFamily::Null,
+
+            // boolean
+            Header::Boolean(_) => HeaderFamily::Boolean,
+
+            // string
+            Header::StringDirect(_)
+            | Header::StringShort(_)
+            | Header::StringChunk
+            | Header::StringFinal => HeaderFamily::String,
+
+            // binary
+            Header::BinaryDirect(_)
+            | Header::BinaryShort(_)
+            | Header::BinaryChunk
+            | Header::BinaryFinal => HeaderFamily::Binary,
+
+            // int
+            Header::Int0(_) | Header::Int8(_) | Header::Int16(_) | Header::Int32 => {
+                HeaderFamily::Int
+            }
+
+            // long
+            Header::Long0(_)
+            | Header::Long8(_)
+            | Header::Long16(_)
+            | Header::Long32
+            | Header::Long64 => HeaderFamily::Long,
+
+            // double
+            Header::DoubleZero
+            | Header::DoubleOne
+            | Header::Double8
+            | Header::Double16
+            | Header::Double32
+            | Header::Double64 => HeaderFamily::Double,
+
+            // date
+            Header::Date32 | Header::Date64 => HeaderFamily::Date,
+
+            // list
+            Header::BeginTypedList0(_) | Header::BeginUntypedList0(_) => HeaderFamily::List,
+            // map
+            Header::BeginUntypedMap | Header::BeginTypedMap | Header::End => HeaderFamily::Map,
+            // class
+            Header::BeginClass => HeaderFamily::Class,
+            // object
+            Header::BeginClassReference(_) => HeaderFamily::ClassRef,
+        }
+    }
+}
+
+#[inline(always)]
+fn unexpect_type<T>(expect: HeaderFamily, actual: HeaderFamily) -> Result<T> {
+    Err(Error::custom(format!(
+        "expect hessian {}, but got {}",
+        expect, actual
+    )))
 }
 
 pub(crate) struct Reader<R> {
@@ -82,7 +182,7 @@ where
     }
 
     #[inline]
-    pub(crate) fn peek(&mut self) -> io::Result<Header> {
+    pub(crate) fn peek(&mut self) -> Result<Header> {
         let buf = {
             let mut buf = self.r.buffer();
             if buf.is_empty() {
@@ -91,7 +191,10 @@ where
             buf
         };
 
-        let first = buf.first().ok_or(io::ErrorKind::UnexpectedEof)?;
+        let first = buf
+            .first()
+            .ok_or_else(|| io::Error::from(io::ErrorKind::UnexpectedEof))?;
+
         let header = match *first {
             0x00..=0x1f => Header::StringDirect(*first),
             0x30..=0x33 => Header::StringShort(*first),
@@ -139,28 +242,30 @@ where
             BC_CLASS => Header::BeginClass,
             0x60..=0x6f => Header::BeginClassReference(*first),
 
-            _ => Header::Unknown,
+            other => {
+                return Err(Error::custom(format!("invalid hessian header {}", other)));
+            }
         };
 
         Ok(header)
     }
 
-    pub(crate) fn read_class(&mut self) -> io::Result<(Cachestr, Fields)> {
+    pub(crate) fn read_class_ref(&mut self) -> Result<(Cachestr, Fields)> {
         match self.peek()? {
             Header::BeginClassReference(i) => {
                 self.consume(1);
                 let class_ref = i - 0x60;
-                let (class, fields) = self
-                    .ctx
-                    .nth(class_ref as usize)
-                    .ok_or(io::ErrorKind::InvalidData)?;
+                let (class, fields) = self.ctx.nth(class_ref as usize).ok_or_else(|| {
+                    Error::custom(format!("class-ref#{} is not found", class_ref))
+                })?;
                 Ok((class, fields))
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::ClassRef, other.family()),
         }
     }
 
-    pub(crate) fn begin_class(&mut self) -> io::Result<usize> {
+    #[inline]
+    pub(crate) fn read_class(&mut self) -> Result<usize> {
         match self.peek()? {
             Header::BeginClass => {
                 self.consume(1);
@@ -179,11 +284,12 @@ where
                 let idx = self.ctx.insert(class, fields);
                 Ok(idx)
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::Class, other.family()),
         }
     }
 
-    pub(crate) fn begin_map(&mut self) -> io::Result<Option<Cachestr>> {
+    #[inline]
+    pub(crate) fn begin_map(&mut self) -> Result<Option<Cachestr>> {
         match self.peek()? {
             Header::BeginTypedMap => {
                 self.consume(1);
@@ -196,12 +302,12 @@ where
                 self.consume(1);
                 Ok(None)
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::Map, other.family()),
         }
     }
 
     #[inline]
-    pub(crate) fn begin_list(&mut self) -> io::Result<(Option<Cachestr>, usize)> {
+    pub(crate) fn begin_list(&mut self) -> Result<(Option<Cachestr>, usize)> {
         match self.peek()? {
             Header::BeginTypedList0(n) => {
                 self.consume(1);
@@ -214,23 +320,23 @@ where
                 let length = (n - BC_LIST_DIRECT_UNTYPED) as usize;
                 Ok((None, length))
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::List, other.family()),
         }
     }
 
     #[inline]
-    pub(crate) fn read_null(&mut self) -> io::Result<()> {
+    pub(crate) fn read_null(&mut self) -> Result<()> {
         match self.peek()? {
             Header::Null => {
                 self.consume(1);
                 Ok(())
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::Null, other.family()),
         }
     }
 
     #[inline]
-    pub(crate) fn read_bool(&mut self) -> io::Result<bool> {
+    pub(crate) fn read_bool(&mut self) -> Result<bool> {
         match self.peek()? {
             Header::Boolean(n) => {
                 self.consume(1);
@@ -240,12 +346,12 @@ where
                     _ => unreachable!(),
                 }
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::Boolean, other.family()),
         }
     }
 
     #[inline]
-    pub(crate) fn read_string(&mut self) -> io::Result<String> {
+    pub(crate) fn read_string(&mut self) -> Result<String> {
         match self.peek()? {
             Header::StringDirect(n) => {
                 self.consume(1);
@@ -295,12 +401,12 @@ where
 
                 Ok(s)
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::String, other.family()),
         }
     }
 
     #[inline]
-    pub(crate) fn read_i32(&mut self) -> io::Result<i32> {
+    pub(crate) fn read_i32(&mut self) -> Result<i32> {
         match self.peek()? {
             Header::Int0(n) => {
                 self.consume(1);
@@ -328,12 +434,12 @@ where
                 let v = read_i32(&mut self.r)?;
                 Ok(v)
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::Int, other.family()),
         }
     }
 
     #[inline]
-    pub(crate) fn read_i64(&mut self) -> io::Result<i64> {
+    pub(crate) fn read_i64(&mut self) -> Result<i64> {
         match self.peek()? {
             Header::Long0(n) => {
                 self.consume(1);
@@ -376,14 +482,14 @@ where
             }
             Header::Long64 => {
                 self.consume(1);
-                read_i64(&mut self.r)
+                Ok(read_i64(&mut self.r)?)
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::Long, other.family()),
         }
     }
 
     #[inline]
-    pub(crate) fn read_binary(&mut self) -> io::Result<Vec<u8>> {
+    pub(crate) fn read_binary(&mut self) -> Result<Vec<u8>> {
         match self.peek()? {
             Header::BinaryDirect(n) => {
                 self.consume(1);
@@ -436,12 +542,12 @@ where
 
                 Ok(b)
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::Binary, other.family()),
         }
     }
 
     #[inline]
-    pub(crate) fn read_f64(&mut self) -> io::Result<f64> {
+    pub(crate) fn read_f64(&mut self) -> Result<f64> {
         match self.peek()? {
             Header::DoubleZero => {
                 self.consume(1);
@@ -468,26 +574,26 @@ where
             }
             Header::Double64 => {
                 self.consume(1);
-                read_f64(&mut self.r)
+                Ok(read_f64(&mut self.r)?)
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::Double, other.family()),
         }
     }
 
     #[inline]
-    pub(crate) fn read_date(&mut self) -> io::Result<SystemTime> {
+    pub(crate) fn read_date(&mut self) -> Result<i64> {
         match self.peek()? {
             Header::Date32 => {
                 self.consume(1);
                 let unix_mills = (read_i32(&mut self.r)? as i64) * 60000i64;
-                Ok(misc::millis_to_system_time(unix_mills))
+                Ok(unix_mills)
             }
             Header::Date64 => {
                 self.consume(1);
                 let v = read_i64(&mut self.r)?;
-                Ok(misc::millis_to_system_time(v))
+                Ok(v)
             }
-            _ => unreachable!(),
+            other => unexpect_type(HeaderFamily::Date, other.family()),
         }
     }
 }

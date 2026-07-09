@@ -22,13 +22,13 @@ string_cache_codegen = "0.7"
 [dependencies]
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
-smallvec = "1.15"
+smallvec = { version = "1.15", features = ["write"] }
 string_cache = "0.10"
+hessian2-derive = { path = "hessian2-derive", version = "0.0.2" }
+base64 = "0.22"
+indexmap = "2.14"
 thiserror = "2"
-hessian2-derive = { path = "hessian2-derive", version = "0.0.1" }
-base64 = "0.22.1"
-indexmap = "2.14.0"
-anyhow = "1.0.103"
+anyhow = "1"
 
 [dev-dependencies]
 pretty_env_logger = "0.5"

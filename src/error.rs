@@ -10,6 +10,9 @@ pub enum Error {
     #[error("unknown hessian2 serde error")]
     Unknown,
 
+    #[error("{0}")]
+    Custom(String),
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -21,13 +24,13 @@ impl Error {
 }
 
 impl serde::ser::Error for Error {
-    fn custom<T: Display>(_msg: T) -> Self {
-        Self::Unknown
+    fn custom<T: Display>(msg: T) -> Self {
+        Self::Custom(format!("{}", msg))
     }
 }
 
 impl serde::de::Error for Error {
     fn custom<T: Display>(msg: T) -> Self {
-        Self::Other(anyhow::anyhow!("{}", msg))
+        Self::Custom(format!("{}", msg))
     }
 }

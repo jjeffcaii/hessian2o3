@@ -71,42 +71,36 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         }
 
         impl ::hessian2::HessianDeserialize for #name {
-            fn hessian_deserialize(
-                value: ::hessian2::value::Value,
-            ) -> ::std::io::Result<Self> {
-                match value {
-                    ::hessian2::value::Value::Object(obj) => {
+            fn hessian_deserialize<__R: ::std::io::Read>(
+                de: &mut ::hessian2::de::Deserializer<__R>,
+            ) -> ::hessian2::Result<Self> {
+                let mut obj = de.begin_object()?;
+                #(
+                    let mut #rust_idents: ::std::option::Option<#field_types> =
+                        ::std::option::Option::None;
+                )*
+                while let ::std::option::Option::Some(field) = obj.next_field() {
+                    match ::std::convert::AsRef::<str>::as_ref(&field) {
                         #(
-                            let mut #rust_idents: ::std::option::Option<#field_types> =
-                                ::std::option::Option::None;
-                        )*
-                        for (k, v) in obj.into_fields() {
-                            match ::std::convert::AsRef::<str>::as_ref(&k) {
-                                #(
-                                    #java_names => {
-                                        #rust_idents = ::std::option::Option::Some(
-                                            ::hessian2::HessianDeserialize::hessian_deserialize(v)?,
-                                        );
-                                    }
-                                )*
-                                _ => {}
+                            #java_names => {
+                                #rust_idents = ::std::option::Option::Some(obj.value()?);
                             }
+                        )*
+                        _ => {
+                            obj.skip_value()?;
                         }
-                        ::std::result::Result::Ok(Self {
-                            #(
-                                #rust_idents: #rust_idents.ok_or_else(|| {
-                                    ::std::io::Error::new(
-                                        ::std::io::ErrorKind::InvalidData,
-                                        ::std::concat!("missing field `", #java_names, "`"),
-                                    )
-                                })?,
-                            )*
-                        })
                     }
-                    other => ::std::result::Result::Err(
-                        ::hessian2::hessian::unexpected_value("object", &other),
-                    ),
                 }
+                ::std::result::Result::Ok(Self {
+                    #(
+                        #rust_idents: #rust_idents.ok_or_else(|| {
+                            ::hessian2::Error::IO(::std::io::Error::new(
+                                ::std::io::ErrorKind::InvalidData,
+                                ::std::concat!("missing field `", #java_names, "`"),
+                            ))
+                        })?,
+                    )*
+                })
             }
         }
     })
