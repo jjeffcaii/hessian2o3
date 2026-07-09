@@ -662,10 +662,10 @@ fn read_utf8<R>(r: &mut R, dst: &mut String, n: usize) -> io::Result<()>
 where
     R: io::Read,
 {
-    let mut buf = [0u8; 4]; // 单个 UTF-8 字符最多 4 字节
+    let mut buf = [0u8; 4]; // a single UTF-8 char is at most 4 bytes
 
     for _ in 0..n {
-        // 先读首字节，判断该字符总长度
+        // read the first byte to determine the total length of this char
         r.read_exact(&mut buf[..1])?;
         let first = buf[0];
 
@@ -677,7 +677,7 @@ where
             _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid utf-8")),
         };
 
-        // 读取剩余的续字节
+        // read the remaining continuation bytes
         if char_len > 1 {
             r.read_exact(&mut buf[1..char_len])?;
         }

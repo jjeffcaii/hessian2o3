@@ -2,7 +2,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// Hessian2 Date 的包装类型，实现和 SystemTime 的双向转换
+/// Wrapper type for a Hessian2 Date, convertible to and from SystemTime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HessianDate(pub SystemTime);
 
@@ -28,8 +28,8 @@ impl Serialize for HessianDate {
             .duration_since(UNIX_EPOCH)
             .map_err(serde::ser::Error::custom)?
             .as_millis() as i64;
-        // 关键：不能直接调用 serialize_i64，会走成普通 long 编码
-        // 必须用自定义方法标记这是"日期"语义
+        // Important: calling serialize_i64 directly would encode a plain long;
+        // the newtype-struct marker is required to signal "date" semantics.
         serializer.serialize_newtype_struct("$hessian::date", &millis)
     }
 }
