@@ -14,11 +14,9 @@ A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian
 
 ## Installation
 
-Not yet published to crates.io. Add it as a git dependency:
-
 ```toml
 [dependencies]
-hessian2 = { git = "https://github.com/jjeffcaii/hessian2o3" }
+hessian2 = "0.0.2"
 ```
 
 ## Usage

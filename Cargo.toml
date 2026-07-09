@@ -3,7 +3,7 @@ members = [".", "hessian2-derive"]
 
 [package]
 name = "hessian2"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 license = "MIT"
 readme = "README.md"
