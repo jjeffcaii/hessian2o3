@@ -1,7 +1,7 @@
 use crate::cachestr::Cachestr;
-use indexmap::map::Entry;
 use indexmap::IndexMap;
-use smallvec::{smallvec, SmallVec};
+use indexmap::map::Entry;
+use smallvec::{SmallVec, smallvec};
 
 mod decode;
 mod encode;
@@ -63,6 +63,6 @@ mod tests {
 
         let i = ctx.put_class_define("com.example.Example", &["id", "name"]);
 
-        assert_matches!(Ok::<usize, usize>(1), i);
+        assert_matches!(i, Ok(0));
     }
 }

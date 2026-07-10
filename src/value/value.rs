@@ -182,7 +182,7 @@ impl Value {
 }
 
 impl From<()> for Value {
-    fn from(value: ()) -> Self {
+    fn from(_value: ()) -> Self {
         Self::Null
     }
 }

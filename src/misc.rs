@@ -11,6 +11,7 @@ pub(crate) fn encode_base64(b: &[u8]) -> String {
     buf
 }
 
+#[allow(dead_code)]
 #[inline]
 pub(crate) fn millis_to_system_time(millis: i64) -> time::SystemTime {
     if millis >= 0 {

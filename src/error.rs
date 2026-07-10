@@ -17,12 +17,6 @@ pub enum Error {
     Other(#[from] anyhow::Error),
 }
 
-impl Error {
-    pub(crate) fn io(err: io::Error) -> Self {
-        Self::IO(err)
-    }
-}
-
 impl serde::ser::Error for Error {
     fn custom<T: Display>(msg: T) -> Self {
         Self::Custom(format!("{}", msg))

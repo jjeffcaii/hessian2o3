@@ -1003,7 +1003,7 @@ mod tests {
             enc.begin_list(Some(class), expect.len())?;
 
             for next in &expect {
-                enc.put_str(*next)?;
+                enc.put_str(next)?;
             }
 
             b

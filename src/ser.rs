@@ -176,12 +176,14 @@ pub trait Formatter {
     }
 }
 
+#[allow(dead_code)]
 pub struct TypedList<L> {
     class: &'static str,
     inner: L,
 }
 
 impl<L> TypedList<L> {
+    #[allow(dead_code)]
     pub fn new(class: &'static str, inner: L) -> Self {
         Self { class, inner }
     }
@@ -193,12 +195,14 @@ impl<L: Serialize> Serialize for TypedList<L> {
     }
 }
 
+#[allow(dead_code)]
 pub struct TypedMap<M> {
     class: &'static str,
     inner: M,
 }
 
 impl<M> TypedMap<M> {
+    #[allow(dead_code)]
     pub fn new(class: &'static str, inner: M) -> Self {
         Self { class, inner }
     }

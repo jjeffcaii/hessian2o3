@@ -6,6 +6,7 @@ mod macros;
 mod map;
 mod object;
 mod ser;
+#[allow(clippy::module_inception)]
 mod value;
 
 pub use de::from_value;

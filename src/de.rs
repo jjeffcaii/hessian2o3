@@ -320,8 +320,8 @@ where
                 self.deserialize_any(visitor)
             }
             HeaderFamily::ClassRef => {
-                let (class, fields) = self.r.read_class_ref()?;
-                visitor.visit_map(ObjectAccess::new(self, class, fields))
+                let (_class, fields) = self.r.read_class_ref()?;
+                visitor.visit_map(ObjectAccess::new(self, fields))
             }
         }
     }
@@ -341,8 +341,8 @@ where
 
     fn deserialize_enum<V>(
         self,
-        name: &'static str,
-        variants: &'static [&'static str],
+        _name: &'static str,
+        _variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Error>
     where
@@ -395,7 +395,7 @@ impl<'de, 'a, R: io::Read + 'a> de::VariantAccess<'de> for VariantAccess<'a, R> 
         seed.deserialize(self.de)
     }
 
-    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
+    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
@@ -416,16 +416,14 @@ impl<'de, 'a, R: io::Read + 'a> de::VariantAccess<'de> for VariantAccess<'a, R> 
 
 struct ObjectAccess<'a, R: 'a> {
     de: &'a mut Deserializer<R>,
-    class: Cachestr,
     fields: Fields,
     index: usize,
 }
 
 impl<'a, R: 'a> ObjectAccess<'a, R> {
-    fn new(de: &'a mut Deserializer<R>, class: Cachestr, fields: Fields) -> Self {
+    fn new(de: &'a mut Deserializer<R>, fields: Fields) -> Self {
         Self {
             de,
-            class,
             fields,
             index: 0,
         }
@@ -478,8 +476,8 @@ impl<'de> de::Deserializer<'de> for FieldName {
 
     fn deserialize_enum<V>(
         self,
-        name: &'static str,
-        variants: &'static [&'static str],
+        _name: &'static str,
+        _variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
@@ -497,13 +495,12 @@ impl<'de> de::Deserializer<'de> for FieldName {
 
 struct MapAccess<'a, R: 'a> {
     de: &'a mut Deserializer<R>,
-    idx: usize,
 }
 
 impl<'a, R: 'a> MapAccess<'a, R> {
     #[inline]
     fn new(de: &'a mut Deserializer<R>) -> MapAccess<'a, R> {
-        MapAccess { de, idx: 0 }
+        MapAccess { de }
     }
 }
 
@@ -722,7 +719,7 @@ mod tests {
 
         let b = to_vec(&Direction::West)?;
         let actual = from_slice::<Direction>(&b)?;
-        assert_matches!(Direction::West, actual);
+        assert_matches!(actual, Direction::West);
 
         Ok(())
     }

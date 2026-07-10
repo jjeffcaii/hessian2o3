@@ -123,9 +123,11 @@ pub struct Keys<'a> {
     iter: KeysImpl<'a>,
 }
 
+#[allow(dead_code)]
 type ValuesImpl<'a> = hash_map::Values<'a, Key, Value>;
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct Values<'a> {
     iter: ValuesImpl<'a>,
 }
