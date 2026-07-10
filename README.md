@@ -1,4 +1,13 @@
-# hessian2
+![hessian2.png](./docs/logo.png)
+
+# Hessian2
+
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/jjeffcaii/hessian2o3/rust.yml)
+[![Codecov](https://img.shields.io/codecov/c/github/jjeffcaii/hessian2o3)](https://app.codecov.io/gh/jjeffcaii/hessian2o3)
+[![Crates.io Version](https://img.shields.io/crates/v/hessian2)](https://crates.io/crates/hessian2)
+[![Crates.io Total Downloads](https://img.shields.io/crates/d/hessian2)](https://crates.io/crates/hessian2)
+![GitHub Tag](https://img.shields.io/github/v/tag/jjeffcaii/hessian2o3)
+![GitHub License](https://img.shields.io/github/license/jjeffcaii/hessian2o3)
 
 A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian.caucho.com/doc/hessian-serialization.html), commonly used for Java/Dubbo RPC interop.
 
@@ -16,7 +25,7 @@ A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian
 
 ```toml
 [dependencies]
-hessian2 = "0.0.2"
+hessian2 = "0.0.3"
 ```
 
 ## Usage
@@ -96,11 +105,11 @@ let list = hessian!([1, "two", [3, 4], null, age]);
 When you don't know the shape of the incoming bytes, decode into the dynamic `Value` type:
 
 ```rust
-use hessian2::codec::{Context, get_value};
+use hessian2::from_slice;
+use hessian2::value::Value;
 
 let data: &[u8] = &[ /* hessian bytes */ ];
-let mut ctx = Context::default();
-let value = get_value(&mut ctx, &mut &data[..])?;
+let value: Value = from_slice(data)?;
 
 // index into maps and lists
 println!("{}", value["name"]);
