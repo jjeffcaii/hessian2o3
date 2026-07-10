@@ -1,336 +1,329 @@
 use super::{Context, tags::*};
+use crate::Result;
 use std::{io, time::SystemTime};
 
-#[inline]
-pub fn put_null<W>(w: &mut W) -> io::Result<()>
-where
-    W: io::Write,
-{
-    w.write_all(&[BC_NULL])?;
-    Ok(())
+pub struct Encoder<W> {
+    w: W,
+    ctx: Option<Context>,
 }
 
-#[inline]
-pub(crate) fn put_bytes<W>(w: &mut W, data: &[u8]) -> io::Result<()>
-where
-    W: io::Write,
-{
-    if data.is_empty() {
-        return put_null(w);
+impl<W> Encoder<W> {
+    pub fn new(w: W) -> Encoder<W> {
+        Self {
+            w,
+            ctx: Default::default(),
+        }
     }
-
-    let mut offset = 0;
-    let size = data.len();
-
-    const CHUNK: usize = 8192;
-    const BATCH: usize = CHUNK - 3;
-
-    while size - offset >= BATCH {
-        w.write_all(&[BC_BINARY_CHUNK])?;
-        w.write_all(&((CHUNK - 3) as u16).to_be_bytes())?;
-        w.write_all(&data[offset..offset + BATCH])?;
-        offset += BATCH;
-    }
-
-    let remaining = size - offset;
-
-    if remaining <= BINARY_DIRECT_MAX {
-        w.write_all(&[BC_BINARY_DIRECT + remaining as u8])?;
-    } else if remaining <= BINARY_SHORT_MAX {
-        w.write_all(&[
-            BC_BINARY_SHORT + (remaining >> 8) as u8,
-            (remaining & 0xff) as u8,
-        ])?;
-    } else {
-        w.write_all(&[BC_BINARY, (remaining >> 8) as u8, (remaining & 0xff) as u8])?;
-    }
-
-    w.write_all(&data[offset..])?;
-
-    Ok(())
 }
 
-#[inline]
-pub fn put_i32<W>(w: &mut W, value: i32) -> io::Result<()>
+impl<W> Encoder<W>
 where
     W: io::Write,
 {
-    const DIRECT: (i32, i32) = (-16, 47);
-    const BYTE: (i32, i32) = (-2048, 2047);
-    const SHORT: (i32, i32) = (-0x40000, 0x3ffff);
-
-    if DIRECT.0 <= value && value <= DIRECT.1 {
-        w.write_all(&[((BC_INT_ZERO as i32) + value) as u8])?;
-    } else if BYTE.0 <= value && value <= BYTE.1 {
-        let first = (BC_INT_BYTE_ZERO as i32 + (value >> 8)) as u8;
-        let second = (value & 0xff) as u8;
-        w.write_all(&[first, second])?;
-    } else if SHORT.0 <= value && value <= SHORT.1 {
-        let first = ((BC_INT_SHORT_ZERO as i32) + (value >> 16)) as u8;
-        let second = (value >> 8) as u8;
-        let third = (value & 0xff) as u8;
-        w.write_all(&[first, second, third])?;
-    } else {
-        w.write_all(&[BC_INT])?;
-        w.write_all(&value.to_be_bytes())?;
+    #[inline]
+    pub fn put_null(&mut self) -> Result<()> {
+        self.w.write_all(&[BC_NULL])?;
+        Ok(())
     }
 
-    Ok(())
-}
+    #[inline]
+    pub fn put_binary(&mut self, data: &[u8]) -> Result<()> {
+        if data.is_empty() {
+            return self.put_null();
+        }
 
-#[inline]
-pub fn put_i64<W>(w: &mut W, value: i64) -> io::Result<()>
-where
-    W: io::Write,
-{
-    const MAX32: i64 = i32::MAX as i64;
-    const MIN32: i64 = i32::MIN as i64;
+        let mut offset = 0;
+        let size = data.len();
 
-    const LONG_DIRECT_MIN: i64 = -8;
-    const LONG_DIRECT_MAX: i64 = 15;
-    const LONG_BYTE_MIN: i64 = -2048;
-    const LONG_BYTE_MAX: i64 = 2047;
-    const LONG_SHORT_MIN: i64 = -0x40000;
-    const LONG_SHORT_MAX: i64 = 0x3ffff;
+        const CHUNK: usize = 8192;
+        const BATCH: usize = CHUNK - 3;
 
-    if (LONG_DIRECT_MIN..=LONG_DIRECT_MAX).contains(&value) {
-        w.write_all(&[(BC_LONG_ZERO as i64 + value) as u8])?;
-    } else if (LONG_BYTE_MIN..=LONG_BYTE_MAX).contains(&value) {
-        let first = (BC_LONG_BYTE_ZERO as i64 + (value >> 8)) as u8;
-        let second = (value & 0xff) as u8;
-        w.write_all(&[first, second])?;
-    } else if (LONG_SHORT_MIN..=LONG_SHORT_MAX).contains(&value) {
-        let first = (BC_LONG_SHORT_ZERO as i64 + (value >> 16)) as u8;
-        let second = (value >> 8) as u8;
-        let third = (value & 0xff) as u8;
-        w.write_all(&[first, second, third])?;
-    } else if (MIN32..=MAX32).contains(&value) {
-        w.write_all(&[BC_LONG_INT])?;
-        w.write_all(&(value as i32).to_be_bytes())?;
-    } else {
-        w.write_all(&[BC_LONG])?;
-        w.write_all(&value.to_be_bytes())?;
+        while size - offset >= BATCH {
+            self.w.write_all(&[BC_BINARY_CHUNK])?;
+            self.w.write_all(&((CHUNK - 3) as u16).to_be_bytes())?;
+            self.w.write_all(&data[offset..offset + BATCH])?;
+            offset += BATCH;
+        }
+
+        let remaining = size - offset;
+
+        if remaining <= BINARY_DIRECT_MAX {
+            self.w.write_all(&[BC_BINARY_DIRECT + remaining as u8])?;
+        } else if remaining <= BINARY_SHORT_MAX {
+            self.w.write_all(&[
+                BC_BINARY_SHORT + (remaining >> 8) as u8,
+                (remaining & 0xff) as u8,
+            ])?;
+        } else {
+            self.w
+                .write_all(&[BC_BINARY, (remaining >> 8) as u8, (remaining & 0xff) as u8])?;
+        }
+
+        self.w.write_all(&data[offset..])?;
+
+        Ok(())
     }
 
-    Ok(())
-}
+    #[inline]
+    pub fn put_i32(&mut self, value: i32) -> Result<()> {
+        const DIRECT: (i32, i32) = (-16, 47);
+        const BYTE: (i32, i32) = (-2048, 2047);
+        const SHORT: (i32, i32) = (-0x40000, 0x3ffff);
 
-#[inline]
-pub fn put_bool<W>(w: &mut W, value: bool) -> io::Result<()>
-where
-    W: io::Write,
-{
-    let byte = if value { BC_BOOL_TRUE } else { BC_BOOL_FALSE };
-    w.write_all(&[byte])?;
-    Ok(())
-}
+        if DIRECT.0 <= value && value <= DIRECT.1 {
+            self.w.write_all(&[((BC_INT_ZERO as i32) + value) as u8])?;
+        } else if BYTE.0 <= value && value <= BYTE.1 {
+            let first = (BC_INT_BYTE_ZERO as i32 + (value >> 8)) as u8;
+            let second = (value & 0xff) as u8;
+            self.w.write_all(&[first, second])?;
+        } else if SHORT.0 <= value && value <= SHORT.1 {
+            let first = ((BC_INT_SHORT_ZERO as i32) + (value >> 16)) as u8;
+            let second = (value >> 8) as u8;
+            let third = (value & 0xff) as u8;
+            self.w.write_all(&[first, second, third])?;
+        } else {
+            self.w.write_all(&[BC_INT])?;
+            self.w.write_all(&value.to_be_bytes())?;
+        }
 
-#[inline]
-pub fn put_f64<W>(w: &mut W, v: f64) -> io::Result<()>
-where
-    W: io::Write,
-{
-    if v.is_finite() {
-        let fract = v.fract();
+        Ok(())
+    }
 
-        if fract == 0.0 {
-            match v.trunc() as i64 {
-                0 => {
-                    w.write_all(&[BC_DOUBLE_ZERO])?;
-                    return Ok(());
+    #[inline]
+    pub fn put_i64(&mut self, value: i64) -> Result<()> {
+        const MAX32: i64 = i32::MAX as i64;
+        const MIN32: i64 = i32::MIN as i64;
+
+        const LONG_DIRECT_MIN: i64 = -8;
+        const LONG_DIRECT_MAX: i64 = 15;
+        const LONG_BYTE_MIN: i64 = -2048;
+        const LONG_BYTE_MAX: i64 = 2047;
+        const LONG_SHORT_MIN: i64 = -0x40000;
+        const LONG_SHORT_MAX: i64 = 0x3ffff;
+
+        if (LONG_DIRECT_MIN..=LONG_DIRECT_MAX).contains(&value) {
+            self.w.write_all(&[(BC_LONG_ZERO as i64 + value) as u8])?;
+        } else if (LONG_BYTE_MIN..=LONG_BYTE_MAX).contains(&value) {
+            let first = (BC_LONG_BYTE_ZERO as i64 + (value >> 8)) as u8;
+            let second = (value & 0xff) as u8;
+            self.w.write_all(&[first, second])?;
+        } else if (LONG_SHORT_MIN..=LONG_SHORT_MAX).contains(&value) {
+            let first = (BC_LONG_SHORT_ZERO as i64 + (value >> 16)) as u8;
+            let second = (value >> 8) as u8;
+            let third = (value & 0xff) as u8;
+            self.w.write_all(&[first, second, third])?;
+        } else if (MIN32..=MAX32).contains(&value) {
+            self.w.write_all(&[BC_LONG_INT])?;
+            self.w.write_all(&(value as i32).to_be_bytes())?;
+        } else {
+            self.w.write_all(&[BC_LONG])?;
+            self.w.write_all(&value.to_be_bytes())?;
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn put_bool(&mut self, value: bool) -> Result<()> {
+        let byte = if value { BC_BOOL_TRUE } else { BC_BOOL_FALSE };
+        self.w.write_all(&[byte])?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn put_f64(&mut self, v: f64) -> Result<()> {
+        if v.is_finite() {
+            let fract = v.fract();
+
+            if fract == 0.0 {
+                match v.trunc() as i64 {
+                    0 => {
+                        self.w.write_all(&[BC_DOUBLE_ZERO])?;
+                        return Ok(());
+                    }
+                    1 => {
+                        self.w.write_all(&[BC_DOUBLE_ONE])?;
+                        return Ok(());
+                    }
+                    v @ -0x80..0x80 => {
+                        self.w.write_all(&[BC_DOUBLE_BYTE, (v & 0xff) as u8])?;
+                        return Ok(());
+                    }
+                    v @ -0x8000..0x8000 => {
+                        self.w
+                            .write_all(&[BC_DOUBLE_SHORT, (v >> 8) as u8, (v & 0xff) as u8])?;
+                        return Ok(());
+                    }
+                    _ => (),
                 }
-                1 => {
-                    w.write_all(&[BC_DOUBLE_ONE])?;
-                    return Ok(());
-                }
-                v @ -0x80..0x80 => {
-                    w.write_all(&[BC_DOUBLE_BYTE, (v & 0xff) as u8])?;
-                    return Ok(());
-                }
-                v @ -0x8000..0x8000 => {
-                    w.write_all(&[BC_DOUBLE_SHORT, (v >> 8) as u8, (v & 0xff) as u8])?;
+            }
+
+            if (1000f64 * fract).fract() == 0.0 {
+                let v1000 = (1000f64 * v) as i32;
+                self.w.write_all(&[BC_DOUBLE_MILL])?;
+                self.w.write_all(&v1000.to_be_bytes())?;
+                return Ok(());
+            }
+        }
+
+        self.w.write_all(&[BC_DOUBLE])?;
+        self.w.write_all(&v.to_bits().to_be_bytes())?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn put_date(&mut self, value: SystemTime) -> Result<()> {
+        let millis = value
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|it| it.as_millis() as i64)
+            .unwrap_or(0);
+
+        if millis % 60000i64 == 0 {
+            let minutes = millis / 60000i64;
+            match minutes >> 31 {
+                0 | -1 => {
+                    self.w.write_all(&[BC_DATE_MINUTE])?;
+                    self.w.write_all(&(minutes as i32).to_be_bytes())?;
                     return Ok(());
                 }
                 _ => (),
             }
         }
-
-        if (1000f64 * fract).fract() == 0.0 {
-            let v1000 = (1000f64 * v) as i32;
-            w.write_all(&[BC_DOUBLE_MILL])?;
-            w.write_all(&v1000.to_be_bytes())?;
-            return Ok(());
-        }
+        self.w.write_all(&[BC_DATE])?;
+        self.w.write_all(&millis.to_be_bytes())?;
+        Ok(())
     }
 
-    w.write_all(&[BC_DOUBLE])?;
-    w.write_all(&v.to_bits().to_be_bytes())?;
-    Ok(())
-}
+    #[inline]
+    pub fn put_str(&mut self, s: &str) -> Result<()> {
+        const STRING_DIRECT_MAX: usize = 32 - 1;
+        const STRING_SHORT_MAX: usize = 1024 - 1;
 
-#[inline]
-pub(crate) fn put_system_time<W>(w: &mut W, value: SystemTime) -> io::Result<()>
-where
-    W: io::Write,
-{
-    let millis = value
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|it| it.as_millis() as i64)
-        .unwrap_or(0);
+        let total = s.char_indices().count();
+        let n = total / 0x8000;
+        let tail = total % 0x8000;
 
-    if millis % 60000i64 == 0 {
-        let minutes = millis / 60000i64;
-        match minutes >> 31 {
-            0 | -1 => {
-                w.write_all(&[BC_DATE_MINUTE])?;
-                w.write_all(&(minutes as i32).to_be_bytes())?;
-                return Ok(());
-            }
-            _ => (),
-        }
-    }
-    w.write_all(&[BC_DATE])?;
-    w.write_all(&millis.to_be_bytes())?;
-    Ok(())
-}
+        let mut cursor = s.chars();
 
-#[inline]
-pub fn put_str<W>(w: &mut W, s: &str) -> io::Result<()>
-where
-    W: io::Write,
-{
-    const STRING_DIRECT_MAX: usize = 32 - 1;
-    const STRING_SHORT_MAX: usize = 1024 - 1;
+        for _ in 0..n {
+            self.w.write_all(&[BC_STRING_CHUNK])?;
+            self.w.write_all(&0x8000u16.to_be_bytes())?;
 
-    let total = s.char_indices().count();
-    let n = total / 0x8000;
-    let tail = total % 0x8000;
-
-    let mut cursor = s.chars();
-
-    for _ in 0..n {
-        w.write_all(&[BC_STRING_CHUNK])?;
-        w.write_all(&0x8000u16.to_be_bytes())?;
-
-        for _ in 0..0x8000 {
-            if let Some(ch) = cursor.next() {
-                write_char(w, ch)?;
+            for _ in 0..0x8000 {
+                if let Some(ch) = cursor.next() {
+                    write_char(&mut self.w, ch)?;
+                }
             }
         }
+
+        if tail <= STRING_DIRECT_MAX {
+            self.w.write_all(&[BC_STRING_DIRECT + tail as u8])?;
+        } else if tail <= STRING_SHORT_MAX {
+            let first = BC_STRING_SHORT + (((tail >> 8) & 0xff) as u8);
+            let second = (tail & 0xff) as u8;
+            self.w.write_all(&[first, second])?;
+        } else {
+            self.w.write_all(&[BC_STRING])?;
+            self.w.write_all(&(tail as u16).to_be_bytes())?;
+        }
+
+        for ch in cursor {
+            write_char(&mut self.w, ch)?;
+        }
+
+        Ok(())
     }
 
-    if tail <= STRING_DIRECT_MAX {
-        w.write_all(&[BC_STRING_DIRECT + tail as u8])?;
-    } else if tail <= STRING_SHORT_MAX {
-        let first = BC_STRING_SHORT + (((tail >> 8) & 0xff) as u8);
-        let second = (tail & 0xff) as u8;
-        w.write_all(&[first, second])?;
-    } else {
-        w.write_all(&[BC_STRING])?;
-        w.write_all(&(tail as u16).to_be_bytes())?;
-    }
-
-    for ch in cursor {
-        write_char(w, ch)?;
-    }
-
-    Ok(())
-}
-
-pub fn begin_list<W>(w: &mut W, typ: Option<&str>, length: usize) -> io::Result<()>
-where
-    W: io::Write,
-{
-    match typ {
-        None => {
-            if length <= LIST_DIRECT_MAX {
-                w.write_all(&[BC_LIST_DIRECT_UNTYPED + length as u8])?;
-            } else {
-                w.write_all(&[BC_LIST_FIXED_UNTYPED])?;
-                put_i32(w, length as i32)?;
+    #[inline]
+    pub fn begin_list(&mut self, typ: Option<&str>, length: usize) -> Result<()> {
+        match typ {
+            None => {
+                if length <= LIST_DIRECT_MAX {
+                    self.w.write_all(&[BC_LIST_DIRECT_UNTYPED + length as u8])?;
+                } else {
+                    self.w.write_all(&[BC_LIST_FIXED_UNTYPED])?;
+                    self.put_i32(length as i32)?;
+                }
+            }
+            Some(name) => {
+                if length <= LIST_DIRECT_MAX {
+                    self.w.write_all(&[BC_LIST_DIRECT + length as u8])?;
+                    self.put_str(name)?;
+                } else {
+                    self.w.write_all(&[BC_LIST_FIXED])?;
+                    self.put_str(name)?;
+                    self.put_i32(length as i32)?;
+                }
             }
         }
-        Some(name) => {
-            if length <= LIST_DIRECT_MAX {
-                w.write_all(&[BC_LIST_DIRECT + length as u8])?;
-                put_str(w, name)?;
-            } else {
-                w.write_all(&[BC_LIST_FIXED])?;
-                put_str(w, name)?;
-                put_i32(w, length as i32)?;
+
+        Ok(())
+    }
+
+    #[inline]
+    pub(crate) fn begin_map(&mut self, typ: Option<&str>) -> Result<()> {
+        match typ {
+            None => {
+                self.w.write_all(&[BC_MAP_UNTYPED])?;
+            }
+            Some(name) => {
+                self.w.write_all(&[BC_MAP])?;
+                self.put_str(name)?;
             }
         }
+
+        Ok(())
     }
 
-    Ok(())
-}
-
-#[inline]
-pub(crate) fn begin_map<W>(w: &mut W, typ: Option<&str>) -> io::Result<()>
-where
-    W: io::Write,
-{
-    match typ {
-        None => {
-            w.write_all(&[BC_MAP_UNTYPED])?;
-        }
-        Some(name) => {
-            w.write_all(&[BC_MAP])?;
-            put_str(w, name)?;
-        }
+    #[inline]
+    pub(crate) fn end_map(&mut self) -> Result<()> {
+        self.w.write_all(&[BC_END])?;
+        Ok(())
     }
 
-    Ok(())
-}
+    pub fn begin_object<S>(&mut self, class: &str, fields: &[S]) -> Result<()>
+    where
+        S: AsRef<str>,
+    {
+        let reference = match self
+            .ctx
+            .get_or_insert_with(Default::default)
+            .put_class_define(class, fields)
+        {
+            Ok(i) => {
+                debug!("write class#{} '{}'", i, class);
 
-#[inline]
-pub(crate) fn end_map<W>(w: &mut W) -> io::Result<()>
-where
-    W: io::Write,
-{
-    w.write_all(&[BC_END])?;
-    Ok(())
-}
+                // write class
+                self.w.write_all(&[BC_CLASS])?;
+                self.put_str(class)?;
 
-pub fn begin_object<W, S>(w: &mut W, ctx: &mut Context, class: &str, fields: &[S]) -> io::Result<()>
-where
-    W: io::Write,
-    S: AsRef<str>,
-{
-    let reference = match ctx.put_class_define(class, fields) {
-        Ok(i) => {
-            debug!("write class#{} '{}'", i, class);
+                self.put_i32(fields.len() as i32)?;
 
-            // write class
-            w.write_all(&[BC_CLASS])?;
-            put_str(w, class)?;
+                for field in fields {
+                    self.put_str(field.as_ref())?;
+                }
 
-            put_i32(w, fields.len() as i32)?;
-
-            for field in fields {
-                put_str(w, field.as_ref())?;
+                i
             }
+            Err(i) => {
+                debug!("use existing class#{} '{}'", i, class);
+                i
+            }
+        };
 
-            i
+        // write reference
+
+        debug!("write class-ref '{}': index={}", class, reference);
+
+        if reference <= OBJECT_DIRECT_MAX {
+            self.w.write_all(&[BC_OBJECT_DIRECT + (reference as u8)])?;
+        } else {
+            self.w.write_all(&[BC_OBJECT])?;
+            self.put_i32(reference as i32)?;
         }
-        Err(i) => {
-            debug!("use existing class#{} '{}'", i, class);
-            i
-        }
-    };
 
-    // write reference
-
-    debug!("write class-ref '{}': index={}", class, reference);
-
-    if reference <= OBJECT_DIRECT_MAX {
-        w.write_all(&[BC_OBJECT_DIRECT + (reference as u8)])?;
-    } else {
-        w.write_all(&[BC_OBJECT])?;
-        put_i32(w, reference as i32)?;
+        Ok(())
     }
-
-    Ok(())
 }
 
 #[inline(always)]
@@ -358,17 +351,22 @@ where
 mod tests {
     use super::*;
 
+    use anyhow::Result;
+
     fn init() {
         pretty_env_logger::try_init_timed().ok();
     }
 
     #[test]
-    fn test_encode_bool() -> io::Result<()> {
+    fn test_encode_bool() -> Result<()> {
         init();
 
-        let to_hex = |b: bool| -> io::Result<String> {
+        let to_hex = |b: bool| -> Result<String> {
             let mut buf = vec![];
-            put_bool(&mut buf, b)?;
+
+            let mut enc = Encoder::new(&mut buf);
+
+            enc.put_bool(b)?;
             Ok(hex::encode(&buf))
         };
 
@@ -379,12 +377,13 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_i64() -> io::Result<()> {
+    fn test_encode_i64() -> Result<()> {
         init();
 
-        let to_hex = |v: i64| -> io::Result<String> {
+        let to_hex = |v: i64| -> Result<String> {
             let mut buf = vec![];
-            put_i64(&mut buf, v)?;
+            let mut enc = Encoder::new(&mut buf);
+            enc.put_i64(v)?;
             Ok(hex::encode(&buf))
         };
 
@@ -402,12 +401,13 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_i32() -> io::Result<()> {
+    fn test_encode_i32() -> Result<()> {
         init();
 
-        let to_hex = |v: i32| -> io::Result<String> {
+        let to_hex = |v: i32| -> Result<String> {
             let mut buf = vec![];
-            put_i32(&mut buf, v)?;
+            let mut enc = Encoder::new(&mut buf);
+            enc.put_i32(v)?;
             Ok(hex::encode(&buf))
         };
 
@@ -428,12 +428,13 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_f64() -> io::Result<()> {
+    fn test_encode_f64() -> Result<()> {
         init();
 
-        let to_hex = |v: f64| -> io::Result<String> {
+        let to_hex = |v: f64| -> Result<String> {
             let mut buf = vec![];
-            put_f64(&mut buf, v)?;
+            let mut enc = Encoder::new(&mut buf);
+            enc.put_f64(v)?;
             Ok(hex::encode(&buf))
         };
 
@@ -452,12 +453,13 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_system_time() -> io::Result<()> {
+    fn test_encode_system_time() -> Result<()> {
         init();
 
-        let to_hex = |v: SystemTime| -> io::Result<String> {
+        let to_hex = |v: SystemTime| -> Result<String> {
             let mut buf = vec![];
-            put_system_time(&mut buf, v)?;
+            let mut enc = Encoder::new(&mut buf);
+            enc.put_date(v)?;
             Ok(hex::encode(&buf))
         };
 
@@ -465,14 +467,14 @@ mod tests {
 
         {
             let rfc3339_str = "2026-06-10T15:16:17+08:00";
-            let datetime = DateTime::parse_from_rfc3339(rfc3339_str).unwrap();
+            let datetime = DateTime::parse_from_rfc3339(rfc3339_str)?;
             let system_time: SystemTime = SystemTime::from(datetime);
 
             assert_eq!("4a0000019eb06395e8", to_hex(system_time)?);
         }
         {
             let rfc3339_str = "2026-06-10T15:16:00+08:00";
-            let datetime = DateTime::parse_from_rfc3339(rfc3339_str).unwrap();
+            let datetime = DateTime::parse_from_rfc3339(rfc3339_str)?;
             let system_time: SystemTime = SystemTime::from(datetime);
 
             assert_eq!("4b01c4f374", to_hex(system_time)?);
@@ -482,12 +484,13 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_str() -> io::Result<()> {
+    fn test_encode_str() -> Result<()> {
         init();
 
-        let to_hex = |v: &str| -> io::Result<String> {
+        let to_hex = |v: &str| -> Result<String> {
             let mut buf = vec![];
-            put_str(&mut buf, v)?;
+            let mut enc = Encoder::new(&mut buf);
+            enc.put_str(v)?;
             Ok(hex::encode(&buf))
         };
 
@@ -504,12 +507,13 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_binary() -> io::Result<()> {
+    fn test_encode_binary() -> Result<()> {
         init();
 
-        let to_hex = |v: &[u8]| -> io::Result<String> {
+        let to_hex = |v: &[u8]| -> Result<String> {
             let mut buf = vec![];
-            put_bytes(&mut buf, v)?;
+            let mut enc = Encoder::new(&mut buf);
+            enc.put_binary(v)?;
             Ok(hex::encode(&buf))
         };
 
@@ -567,15 +571,18 @@ mod tests {
     }
 
     #[test]
-    fn test_list() -> io::Result<()> {
+    fn test_list() -> Result<()> {
         // untyped i64
         {
-            let to_hex = |v: &[i64]| -> io::Result<String> {
+            let to_hex = |v: &[i64]| -> Result<String> {
                 let mut w = vec![];
                 let size = v.len();
-                begin_list(&mut w, None, size)?;
+                let mut enc = Encoder::new(&mut w);
+
+                enc.begin_list(None, size)?;
+
                 for next in v {
-                    put_i64(&mut w, *next)?;
+                    enc.put_i64(*next)?;
                 }
                 Ok(hex::encode(&w))
             };
@@ -590,12 +597,15 @@ mod tests {
 
         // untyped string
         {
-            let to_hex = |v: &[&str]| -> io::Result<String> {
-                let mut w = vec![];
+            let to_hex = |v: &[&str]| -> Result<String> {
                 let size = v.len();
-                begin_list(&mut w, None, size)?;
+
+                let mut w = vec![];
+                let mut enc = Encoder::new(&mut w);
+                enc.begin_list(None, size)?;
+
                 for next in v {
-                    put_str(&mut w, next)?;
+                    enc.put_str(next)?;
                 }
                 Ok(hex::encode(&w))
             };
@@ -611,12 +621,13 @@ mod tests {
         {
             let typ = "java.util.LinkedList";
 
-            let to_hex = |typ: &str, v: &[i64]| -> io::Result<String> {
+            let to_hex = |typ: &str, v: &[i64]| -> Result<String> {
                 let mut w = vec![];
                 let size = v.len();
-                begin_list(&mut w, Some(typ), size)?;
+                let mut enc = Encoder::new(&mut w);
+                enc.begin_list(Some(typ), size)?;
                 for next in v {
-                    put_i64(&mut w, *next)?;
+                    enc.put_i64(*next)?;
                 }
                 Ok(hex::encode(&w))
             };
@@ -639,7 +650,7 @@ mod tests {
     }
 
     #[test]
-    fn test_map() -> io::Result<()> {
+    fn test_map() -> Result<()> {
         init();
 
         use std::collections::BTreeMap;
@@ -652,14 +663,17 @@ mod tests {
         // untyped
         {
             let mut w = vec![];
-            begin_map(&mut w, None)?;
+
+            let mut enc = Encoder::new(&mut w);
+
+            enc.begin_map(None)?;
 
             for (k, v) in &m {
-                put_i32(&mut w, *k)?;
-                put_str(&mut w, v)?;
+                enc.put_i32(*k)?;
+                enc.put_str(v)?;
             }
 
-            end_map(&mut w)?;
+            enc.end_map()?;
 
             let s = hex::encode(&w);
 
@@ -671,14 +685,15 @@ mod tests {
         // typed
         {
             let mut w = vec![];
-            begin_map(&mut w, Some("java.util.TreeMap"))?;
+            let mut enc = Encoder::new(&mut w);
+            enc.begin_map(Some("java.util.TreeMap"))?;
 
             for (k, v) in &m {
-                put_i32(&mut w, *k)?;
-                put_str(&mut w, v)?;
+                enc.put_i32(*k)?;
+                enc.put_str(v)?;
             }
 
-            end_map(&mut w)?;
+            enc.end_map()?;
 
             let s = hex::encode(&w);
 
@@ -694,16 +709,17 @@ mod tests {
     }
 
     #[test]
-    fn test_object() -> io::Result<()> {
+    fn test_object() -> Result<()> {
         init();
         let mut b = vec![];
-        let mut ctx = Context::default();
 
-        begin_object(&mut b, &mut ctx, "com.example.User", &["id", "name", "age"])?;
+        let mut enc = Encoder::new(&mut b);
 
-        put_i64(&mut b, 1234)?;
-        put_str(&mut b, "杨幂")?;
-        put_i32(&mut b, 18)?;
+        enc.begin_object("com.example.User", &["id", "name", "age"])?;
+
+        enc.put_i64(1234)?;
+        enc.put_str("杨幂")?;
+        enc.put_i32(18)?;
 
         assert_eq!(
             "4310636f6d2e6578616d706c652e5573657293026964046e616d650361676560fcd202e69da8e5b982a2",
@@ -714,40 +730,29 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_object() -> io::Result<()> {
+    fn test_nested_object() -> Result<()> {
         init();
 
         let mut b = vec![];
-        let mut ctx = Context::default();
 
-        begin_object(
-            &mut b,
-            &mut ctx,
+        let mut enc = Encoder::new(&mut b);
+
+        enc.begin_object(
             "com.example.User",
             &["id", "name", "age", "home", "company"],
         )?;
 
-        put_i64(&mut b, 1234)?;
-        put_str(&mut b, "杨幂")?;
-        put_i32(&mut b, 18)?;
+        enc.put_i64(1234)?;
+        enc.put_str("杨幂")?;
+        enc.put_i32(18)?;
 
-        begin_object(
-            &mut b,
-            &mut ctx,
-            "com.example.Address",
-            &["city", "zipcode"],
-        )?;
-        put_str(&mut b, "Shanghai")?;
-        put_str(&mut b, "200000")?;
+        enc.begin_object("com.example.Address", &["city", "zipcode"])?;
+        enc.put_str("Shanghai")?;
+        enc.put_str("200000")?;
 
-        begin_object(
-            &mut b,
-            &mut ctx,
-            "com.example.Address",
-            &["city", "zipcode"],
-        )?;
-        put_str(&mut b, "Beijing")?;
-        put_str(&mut b, "100000")?;
+        enc.begin_object("com.example.Address", &["city", "zipcode"])?;
+        enc.put_str("Beijing")?;
+        enc.put_str("100000")?;
 
         assert_eq!(
             "4310636f6d2e6578616d706c652e5573657295026964046e616d650361676504686f6d6507636f6d70616e7960fcd202e69da8e5b982a24313636f6d2e6578616d706c652e41646472657373920463697479077a6970636f646561085368616e676861690632303030303061074265696a696e6706313030303030",

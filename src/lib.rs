@@ -1,9 +1,9 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_assignments)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::from_over_into)]
-#![allow(clippy::module_inception)]
+// #![allow(dead_code)]
+// #![allow(unused_variables)]
+// #![allow(unused_assignments)]
+// #![allow(clippy::type_complexity)]
+// #![allow(clippy::from_over_into)]
+// #![allow(clippy::module_inception)]
 
 #[cfg(test)]
 #[macro_use]
@@ -30,8 +30,8 @@ pub mod value;
 
 pub use error::Error;
 pub use hessian::{
-    hessian_from_reader, hessian_from_slice, hessian_to_vec, hessian_to_writer, HessianDeserialize,
-    HessianSerialize,
+    HessianDeserialize, HessianSerialize, hessian_from_reader, hessian_from_slice, hessian_to_vec,
+    hessian_to_writer,
 };
 pub use hessian2_derive::Hessian;
 

@@ -117,7 +117,7 @@ fn test_nested_objects_match_encode_test() -> Result<()> {
             zipcode: String::from("100000"),
         },
     };
-    let bytes = hessian_to_vec(&user).unwrap();
+    let bytes = hessian_to_vec(&user)?;
     let s = hex::encode(&bytes);
 
     assert_eq!(

@@ -15,7 +15,7 @@ use std::io;
 /// class-definition references, so several objects of the same class can be
 /// read from one stream.
 pub struct Deserializer<R> {
-    r: codec::Reader<R>,
+    r: codec::Decoder<R>,
 }
 
 impl<R> Deserializer<R>
@@ -24,7 +24,7 @@ where
 {
     pub fn new(reader: R) -> Self {
         Self {
-            r: codec::Reader::new(reader),
+            r: codec::Decoder::new(reader),
         }
     }
 
@@ -563,8 +563,8 @@ impl<'de, 'a, R: io::Read + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codec as encode;
-    use crate::codec::Context;
+    use crate::Result;
+    use crate::codec::Encoder;
     use crate::serde::{from_slice, to_vec};
     use serde::{Deserialize, Serialize};
 
@@ -573,7 +573,7 @@ mod tests {
     }
 
     #[test]
-    fn test_from_slice_scalars() -> anyhow::Result<()> {
+    fn test_from_slice_scalars() -> Result<()> {
         init();
 
         assert!(from_slice::<bool>(&to_vec(&true)?)?);
@@ -651,11 +651,11 @@ mod tests {
         // encode a class-based hessian object ('C' definition + instance)
         let b = {
             let mut b = vec![];
-            let mut ctx = Context::default();
-            encode::begin_object(&mut b, &mut ctx, "com.example.User", &["id", "name", "age"])?;
-            encode::put_i64(&mut b, 123)?;
-            encode::put_str(&mut b, "Jerry")?;
-            encode::put_i32(&mut b, 18)?;
+            let mut enc = Encoder::new(&mut b);
+            enc.begin_object("com.example.User", &["id", "name", "age"])?;
+            enc.put_i64(123)?;
+            enc.put_str("Jerry")?;
+            enc.put_i32(18)?;
             b
         };
 
@@ -688,13 +688,13 @@ mod tests {
         // Context of the first.
         let b = {
             let mut b = vec![];
-            let mut ctx = Context::default();
-            encode::begin_object(&mut b, &mut ctx, "com.example.Point", &["x", "y"])?;
-            encode::put_i32(&mut b, 1)?;
-            encode::put_i32(&mut b, 2)?;
-            encode::begin_object(&mut b, &mut ctx, "com.example.Point", &["x", "y"])?;
-            encode::put_i32(&mut b, 3)?;
-            encode::put_i32(&mut b, 4)?;
+            let mut enc = Encoder::new(&mut b);
+            enc.begin_object("com.example.Point", &["x", "y"])?;
+            enc.put_i32(1)?;
+            enc.put_i32(2)?;
+            enc.begin_object("com.example.Point", &["x", "y"])?;
+            enc.put_i32(3)?;
+            enc.put_i32(4)?;
             b
         };
 
@@ -709,7 +709,7 @@ mod tests {
     }
 
     #[test]
-    fn test_from_slice_unit_enum_variant() -> anyhow::Result<()> {
+    fn test_from_slice_unit_enum_variant() -> Result<()> {
         init();
 
         #[derive(Debug, PartialEq, Serialize, Deserialize)]

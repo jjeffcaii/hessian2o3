@@ -1,14 +1,14 @@
 use crate::cachestr::Cachestr;
-use indexmap::IndexMap;
 use indexmap::map::Entry;
-use smallvec::{SmallVec, smallvec};
+use indexmap::IndexMap;
+use smallvec::{smallvec, SmallVec};
 
 mod decode;
 mod encode;
 mod tags;
 
-pub use decode::*;
-pub use encode::*;
+pub(crate) use decode::{Decoder, Header, HeaderFamily};
+pub use encode::Encoder;
 
 pub type Fields = SmallVec<[Cachestr; 16]>;
 
@@ -39,7 +39,7 @@ impl Context {
         let ent = self.class_refs.entry(Clone::clone(&class));
         let index = ent.index();
         match ent {
-            Entry::Occupied(o) => Err(index),
+            Entry::Occupied(_o) => Err(index),
             Entry::Vacant(v) => {
                 let mut newborn = smallvec![];
                 for field in fields {

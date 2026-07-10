@@ -1,156 +1,178 @@
-use crate::codec;
+use crate::Result;
+use crate::codec::Encoder;
 use crate::error::Error;
 use serde::ser::{self, Serialize};
 use std::io;
+use std::result::Result as StdResult;
 
 pub struct DefaultFormatter;
 
 impl Formatter for DefaultFormatter {}
 
 pub trait Formatter {
-    fn put_unit<W>(&mut self, w: &mut W) -> io::Result<()>
+    #[inline]
+    fn put_unit<W>(&mut self, w: &mut Encoder<W>) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_null(w)
+        w.put_null()
     }
 
-    fn put_null<W>(&mut self, w: &mut W) -> io::Result<()>
+    #[inline]
+    fn put_null<W>(&mut self, w: &mut Encoder<W>) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_null(w)
+        w.put_null()
     }
 
-    fn put_bool<W>(&mut self, w: &mut W, b: bool) -> io::Result<()>
+    #[inline]
+    fn put_bool<W>(&mut self, w: &mut Encoder<W>, b: bool) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_bool(w, b)
+        w.put_bool(b)
     }
 
-    fn put_i8<W>(&mut self, w: &mut W, i: i8) -> io::Result<()>
+    #[inline]
+    fn put_i8<W>(&mut self, w: &mut Encoder<W>, i: i8) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_i32(w, i as i32)
+        w.put_i32(i as i32)
     }
 
-    fn put_i16<W>(&mut self, w: &mut W, i: i16) -> io::Result<()>
+    #[inline]
+    fn put_i16<W>(&mut self, w: &mut Encoder<W>, i: i16) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_i32(w, i as i32)
+        w.put_i32(i as i32)
     }
 
-    fn put_i32<W>(&mut self, w: &mut W, i: i32) -> io::Result<()>
+    #[inline]
+    fn put_i32<W>(&mut self, w: &mut Encoder<W>, i: i32) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_i32(w, i)
+        w.put_i32(i)
     }
 
-    fn put_i64<W>(&mut self, w: &mut W, i: i64) -> io::Result<()>
+    #[inline]
+    fn put_i64<W>(&mut self, w: &mut Encoder<W>, i: i64) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_i64(w, i)
+        w.put_i64(i)
     }
 
-    fn put_u8<W>(&mut self, w: &mut W, i: u8) -> io::Result<()>
+    #[inline]
+    fn put_u8<W>(&mut self, w: &mut Encoder<W>, i: u8) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_i32(w, i as i32)
+        w.put_i32(i as i32)
     }
 
-    fn put_u16<W>(&mut self, w: &mut W, i: u16) -> io::Result<()>
+    #[inline]
+    fn put_u16<W>(&mut self, w: &mut Encoder<W>, i: u16) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_i32(w, i as i32)
+        w.put_i32(i as i32)
     }
 
-    fn put_u32<W>(&mut self, w: &mut W, i: u32) -> io::Result<()>
+    #[inline]
+    fn put_u32<W>(&mut self, w: &mut Encoder<W>, i: u32) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_i64(w, i as i64)
+        w.put_i64(i as i64)
     }
 
-    fn put_u64<W>(&mut self, w: &mut W, i: u64) -> io::Result<()>
+    #[inline]
+    fn put_u64<W>(&mut self, w: &mut Encoder<W>, i: u64) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_i64(w, i as i64)
+        w.put_i64(i as i64)
     }
 
-    fn put_f32<W>(&mut self, w: &mut W, f: f32) -> io::Result<()>
+    #[inline]
+    fn put_f32<W>(&mut self, w: &mut Encoder<W>, f: f32) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_f64(w, f as f64)
+        w.put_f64(f as f64)
     }
 
-    fn put_f64<W>(&mut self, w: &mut W, v: f64) -> io::Result<()>
+    #[inline]
+    fn put_f64<W>(&mut self, w: &mut Encoder<W>, v: f64) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_f64(w, v)
+        w.put_f64(v)
     }
 
-    fn put_str<W>(&mut self, w: &mut W, s: &str) -> io::Result<()>
+    #[inline]
+    fn put_str<W>(&mut self, w: &mut Encoder<W>, s: &str) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_str(w, s)
+        w.put_str(s)
     }
 
-    fn put_bytes<W>(&mut self, w: &mut W, b: &[u8]) -> io::Result<()>
+    #[inline]
+    fn put_bytes<W>(&mut self, w: &mut Encoder<W>, b: &[u8]) -> Result<()>
     where
         W: io::Write,
     {
-        codec::put_bytes(w, b)
+        w.put_binary(b)
     }
 
-    fn begin_list<W>(&mut self, w: &mut W, n: Option<usize>) -> io::Result<()>
+    #[inline]
+    fn begin_list<W>(&mut self, w: &mut Encoder<W>, n: Option<usize>) -> Result<()>
     where
         W: io::Write,
     {
-        codec::begin_list(w, None, n.unwrap_or(0))
+        w.begin_list(None, n.unwrap_or(0))
     }
 
+    #[inline]
     fn begin_typed_list<W>(
         &mut self,
-        w: &mut W,
+        w: &mut Encoder<W>,
         class: &str,
         length: Option<usize>,
-    ) -> io::Result<()>
+    ) -> Result<()>
     where
         W: io::Write,
     {
-        codec::begin_list(w, Some(class), length.unwrap_or(0))
+        w.begin_list(Some(class), length.unwrap_or(0))
     }
 
-    fn begin_map<W>(&mut self, w: &mut W) -> io::Result<()>
+    #[inline]
+    fn begin_map<W>(&mut self, w: &mut Encoder<W>) -> Result<()>
     where
         W: io::Write,
     {
-        codec::begin_map(w, None)
+        w.begin_map(None)
     }
 
-    fn begin_typed_map<W>(&mut self, w: &mut W, class: &str) -> io::Result<()>
+    #[inline]
+    fn begin_typed_map<W>(&mut self, w: &mut Encoder<W>, class: &str) -> Result<()>
     where
         W: io::Write,
     {
-        codec::begin_map(w, Some(class))
+        w.begin_map(Some(class))
     }
 
-    fn end_compound<W>(&mut self, w: &mut W) -> io::Result<()>
+    #[inline]
+    fn end_compound<W>(&mut self, w: &mut Encoder<W>) -> Result<()>
     where
         W: io::Write,
     {
-        codec::end_map(w)
+        w.end_map()
     }
 }
 
@@ -166,7 +188,7 @@ impl<L> TypedList<L> {
 }
 
 impl<L: Serialize> Serialize for TypedList<L> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> StdResult<S::Ok, S::Error> {
         serializer.serialize_newtype_struct(self.class, &self.inner)
     }
 }
@@ -183,13 +205,13 @@ impl<M> TypedMap<M> {
 }
 
 impl<M: Serialize> Serialize for TypedMap<M> {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> StdResult<S::Ok, S::Error> {
         serializer.serialize_newtype_struct(self.class, &self.inner)
     }
 }
 
 pub struct Serializer<W, F> {
-    writer: W,
+    encoder: Encoder<W>,
     formatter: F,
     pending_class: Option<&'static str>,
 }
@@ -197,7 +219,7 @@ pub struct Serializer<W, F> {
 impl<W: io::Write, F: Formatter> Serializer<W, F> {
     pub fn new(writer: W, formatter: F) -> Self {
         Self {
-            writer,
+            encoder: Encoder::new(writer),
             formatter,
             pending_class: None,
         }
@@ -217,18 +239,19 @@ where
     type Ok = ();
     type Error = Error;
 
-    fn serialize_element<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+    fn serialize_element<T: ?Sized + Serialize>(
+        &mut self,
+        value: &T,
+    ) -> StdResult<(), Self::Error> {
         match self {
             Compound::Seq { ser } => value.serialize(&mut **ser),
             Compound::Map { ser } => value.serialize(&mut **ser),
         }
     }
 
-    fn end(self) -> Result<Self::Ok, Self::Error> {
+    fn end(self) -> StdResult<Self::Ok, Self::Error> {
         if let Compound::Map { ser } = self {
-            ser.formatter
-                .end_compound(&mut ser.writer)
-                .map_err(Error::io)?;
+            ser.formatter.end_compound(&mut ser.encoder)?
         }
 
         Ok(())
@@ -243,11 +266,14 @@ where
     type Ok = ();
     type Error = Error;
 
-    fn serialize_element<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+    fn serialize_element<T: ?Sized + Serialize>(
+        &mut self,
+        value: &T,
+    ) -> StdResult<(), Self::Error> {
         ser::SerializeSeq::serialize_element(self, value)
     }
 
-    fn end(self) -> Result<Self::Ok, Self::Error> {
+    fn end(self) -> StdResult<Self::Ok, Self::Error> {
         ser::SerializeSeq::end(self)
     }
 }
@@ -260,11 +286,11 @@ where
     type Ok = ();
     type Error = Error;
 
-    fn serialize_field<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+    fn serialize_field<T: ?Sized + Serialize>(&mut self, value: &T) -> StdResult<(), Self::Error> {
         ser::SerializeSeq::serialize_element(self, value)
     }
 
-    fn end(self) -> Result<Self::Ok, Self::Error> {
+    fn end(self) -> StdResult<Self::Ok, Self::Error> {
         ser::SerializeSeq::end(self)
     }
 }
@@ -277,11 +303,11 @@ where
     type Ok = ();
     type Error = Error;
 
-    fn serialize_field<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+    fn serialize_field<T: ?Sized + Serialize>(&mut self, value: &T) -> StdResult<(), Self::Error> {
         ser::SerializeSeq::serialize_element(self, value)
     }
 
-    fn end(self) -> Result<Self::Ok, Self::Error> {
+    fn end(self) -> StdResult<Self::Ok, Self::Error> {
         ser::SerializeSeq::end(self)
     }
 }
@@ -294,27 +320,25 @@ where
     type Ok = ();
     type Error = Error;
 
-    fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> Result<(), Self::Error> {
+    fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> StdResult<(), Self::Error> {
         let Compound::Map { ser } = self else {
             unreachable!()
         };
         key.serialize(&mut **ser)
     }
 
-    fn serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+    fn serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) -> StdResult<(), Self::Error> {
         let Compound::Map { ser } = self else {
             unreachable!()
         };
         value.serialize(&mut **ser)
     }
 
-    fn end(self) -> Result<Self::Ok, Self::Error> {
+    fn end(self) -> StdResult<Self::Ok, Self::Error> {
         let Compound::Map { ser } = self else {
             unreachable!()
         };
-        ser.formatter
-            .end_compound(&mut ser.writer)
-            .map_err(Error::io)
+        ser.formatter.end_compound(&mut ser.encoder)
     }
 }
 
@@ -330,17 +354,15 @@ where
         &mut self,
         key: &'static str,
         value: &T,
-    ) -> Result<(), Self::Error> {
+    ) -> StdResult<(), Self::Error> {
         let Compound::Map { ser } = self else {
             unreachable!()
         };
-        ser.formatter
-            .put_str(&mut ser.writer, key)
-            .map_err(Error::io)?;
+        ser.formatter.put_str(&mut ser.encoder, key)?;
         value.serialize(&mut **ser)
     }
 
-    fn end(self) -> Result<Self::Ok, Self::Error> {
+    fn end(self) -> StdResult<Self::Ok, Self::Error> {
         ser::SerializeMap::end(self)
     }
 }
@@ -357,11 +379,11 @@ where
         &mut self,
         key: &'static str,
         value: &T,
-    ) -> Result<(), Self::Error> {
+    ) -> StdResult<(), Self::Error> {
         ser::SerializeStruct::serialize_field(self, key, value)
     }
 
-    fn end(self) -> Result<Self::Ok, Self::Error> {
+    fn end(self) -> StdResult<Self::Ok, Self::Error> {
         ser::SerializeMap::end(self)
     }
 }
@@ -381,102 +403,76 @@ where
     type SerializeStruct = Compound<'a, W, F>;
     type SerializeStructVariant = Compound<'a, W, F>;
 
-    fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_bool(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_bool(self, v: bool) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_bool(&mut self.encoder, v)
     }
 
-    fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_i8(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_i8(self, v: i8) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_i8(&mut self.encoder, v)
     }
 
-    fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_i16(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_i16(self, v: i16) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_i16(&mut self.encoder, v)
     }
 
-    fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_i32(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_i32(self, v: i32) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_i32(&mut self.encoder, v)
     }
 
-    fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_i64(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_i64(self, v: i64) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_i64(&mut self.encoder, v)
     }
 
-    fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_u8(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_u8(self, v: u8) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_u8(&mut self.encoder, v)
     }
 
-    fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_u16(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_u16(self, v: u16) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_u16(&mut self.encoder, v)
     }
 
-    fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_u32(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_u32(self, v: u32) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_u32(&mut self.encoder, v)
     }
 
-    fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_u64(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_u64(self, v: u64) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_u64(&mut self.encoder, v)
     }
 
-    fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_f32(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_f32(self, v: f32) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_f32(&mut self.encoder, v)
     }
 
-    fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_f64(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_f64(self, v: f64) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_f64(&mut self.encoder, v)
     }
 
-    fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
+    fn serialize_char(self, v: char) -> StdResult<Self::Ok, Self::Error> {
         let mut buf = [0u8; 4];
         self.serialize_str(v.encode_utf8(&mut buf))
     }
 
-    fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_str(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_str(self, v: &str) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_str(&mut self.encoder, v)
     }
 
-    fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
-        self.formatter
-            .put_bytes(&mut self.writer, v)
-            .map_err(Error::io)
+    fn serialize_bytes(self, v: &[u8]) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_bytes(&mut self.encoder, v)
     }
 
-    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        self.formatter.put_null(&mut self.writer).map_err(Error::io)
+    fn serialize_none(self) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_null(&mut self.encoder)
     }
 
-    fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> Result<Self::Ok, Self::Error> {
+    fn serialize_some<T: ?Sized + Serialize>(self, value: &T) -> StdResult<Self::Ok, Self::Error> {
         value.serialize(self)
     }
 
-    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        self.formatter.put_unit(&mut self.writer).map_err(Error::io)
+    fn serialize_unit(self) -> StdResult<Self::Ok, Self::Error> {
+        self.formatter.put_unit(&mut self.encoder)
     }
 
-    fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
+    fn serialize_unit_struct(self, _name: &'static str) -> StdResult<Self::Ok, Self::Error> {
         self.serialize_unit()
     }
 
@@ -485,7 +481,7 @@ where
         _name: &'static str,
         _variant_index: u32,
         variant: &'static str,
-    ) -> Result<Self::Ok, Self::Error> {
+    ) -> StdResult<Self::Ok, Self::Error> {
         self.serialize_str(variant)
     }
 
@@ -493,7 +489,7 @@ where
         self,
         name: &'static str,
         value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
+    ) -> StdResult<Self::Ok, Self::Error> {
         self.pending_class = Some(name);
         let result = value.serialize(&mut *self);
         self.pending_class = None;
@@ -506,26 +502,23 @@ where
         _variant_index: u32,
         _variant: &'static str,
         value: &T,
-    ) -> Result<Self::Ok, Self::Error> {
+    ) -> StdResult<Self::Ok, Self::Error> {
         value.serialize(self)
     }
 
-    fn serialize_seq(self, size: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+    fn serialize_seq(self, size: Option<usize>) -> StdResult<Self::SerializeSeq, Self::Error> {
         match self.pending_class.take() {
-            None => self.formatter.begin_list(&mut self.writer, size),
+            None => self.formatter.begin_list(&mut self.encoder, size),
             Some(class) => self
                 .formatter
-                .begin_typed_list(&mut self.writer, class, size),
-        }
-        .map_err(Error::io)?;
+                .begin_typed_list(&mut self.encoder, class, size),
+        }?;
 
         Ok(Compound::Seq { ser: self })
     }
 
-    fn serialize_tuple(self, size: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        self.formatter
-            .begin_list(&mut self.writer, Some(size))
-            .map_err(Error::io)?;
+    fn serialize_tuple(self, size: usize) -> StdResult<Self::SerializeTuple, Self::Error> {
+        self.formatter.begin_list(&mut self.encoder, Some(size))?;
         Ok(Compound::Seq { ser: self })
     }
 
@@ -533,10 +526,8 @@ where
         self,
         _name: &'static str,
         size: usize,
-    ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        self.formatter
-            .begin_list(&mut self.writer, Some(size))
-            .map_err(Error::io)?;
+    ) -> StdResult<Self::SerializeTupleStruct, Self::Error> {
+        self.formatter.begin_list(&mut self.encoder, Some(size))?;
         Ok(Compound::Seq { ser: self })
     }
 
@@ -546,22 +537,16 @@ where
         _variant_index: u32,
         _variant: &'static str,
         size: usize,
-    ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        self.formatter
-            .begin_list(&mut self.writer, Some(size))
-            .map_err(Error::io)?;
+    ) -> StdResult<Self::SerializeTupleVariant, Self::Error> {
+        self.formatter.begin_list(&mut self.encoder, Some(size))?;
         Ok(Compound::Seq { ser: self })
     }
 
-    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+    fn serialize_map(self, _len: Option<usize>) -> StdResult<Self::SerializeMap, Self::Error> {
         if let Some(class) = self.pending_class.take() {
-            self.formatter
-                .begin_typed_map(&mut self.writer, class)
-                .map_err(Error::io)?;
+            self.formatter.begin_typed_map(&mut self.encoder, class)?;
         } else {
-            self.formatter
-                .begin_map(&mut self.writer)
-                .map_err(Error::io)?;
+            self.formatter.begin_map(&mut self.encoder)?;
         }
         Ok(Compound::Map { ser: self })
     }
@@ -570,10 +555,8 @@ where
         self,
         _name: &'static str,
         _len: usize,
-    ) -> Result<Self::SerializeStruct, Self::Error> {
-        self.formatter
-            .begin_map(&mut self.writer)
-            .map_err(Error::io)?;
+    ) -> StdResult<Self::SerializeStruct, Self::Error> {
+        self.formatter.begin_map(&mut self.encoder)?;
         Ok(Compound::Map { ser: self })
     }
 
@@ -583,10 +566,8 @@ where
         _variant_index: u32,
         _variant: &'static str,
         _len: usize,
-    ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        self.formatter
-            .begin_map(&mut self.writer)
-            .map_err(Error::io)?;
+    ) -> StdResult<Self::SerializeStructVariant, Self::Error> {
+        self.formatter.begin_map(&mut self.encoder)?;
         Ok(Compound::Map { ser: self })
     }
 }

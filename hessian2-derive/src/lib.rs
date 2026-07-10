@@ -48,7 +48,7 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
 
     let field_serializers = rust_idents.iter().map(|ident| {
         quote! {
-            ::hessian2::HessianSerialize::hessian_serialize(&self.#ident, w, ctx)?;
+            ::hessian2::HessianSerialize::hessian_serialize(&self.#ident, w)?;
         }
     });
 
@@ -56,17 +56,14 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         impl ::hessian2::HessianSerialize for #name {
             fn hessian_serialize<W: ::std::io::Write>(
                 &self,
-                w: &mut W,
-                ctx: &mut ::hessian2::codec::Context,
-            ) -> ::std::io::Result<()> {
-                ::hessian2::codec::begin_object(
-                    w,
-                    ctx,
+                w: &mut ::hessian2::codec::Encoder<W>,
+            ) -> ::hessian2::Result<()> {
+                w.begin_object(
                     #class_name,
                     &[#(#java_names),*],
                 )?;
                 #(#field_serializers)*
-                ::std::result::Result::Ok(())
+                ::hessian2::Result::Ok(())
             }
         }
 
@@ -91,7 +88,7 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                         }
                     }
                 }
-                ::std::result::Result::Ok(Self {
+                ::hessian2::Result::Ok(Self {
                     #(
                         #rust_idents: #rust_idents.ok_or_else(|| {
                             ::hessian2::Error::IO(::std::io::Error::new(
