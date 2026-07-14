@@ -15,7 +15,7 @@ A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian
 
 ## Features
 
-- **Encoding & decoding** — full Hessian 2.0 binary serialization, including compact int/long/double forms, chunked strings/binary, typed lists/maps, and class-definition reuse for objects
+- **Encoding & decoding** — full Hessian 2.0 binary serialization, including compact int/long/double forms, chunked strings/binary, typed lists/maps, and class-definition reuse for objects; decoding accepts every list form (direct, fixed-length, and `'Z'`-terminated variable-length)
 - **serde integration** — encode/decode any `Serialize` / `Deserialize` type via `to_vec` / `to_writer` / `from_slice` / `from_reader`
 - **`#[derive(Hessian)]`** — map Rust structs to Java classes with `#[hessian(class = "...")]` and per-field `#[hessian(rename = "...")]`
 - **Dynamic `Value` type** — decode arbitrary Hessian data without knowing its shape upfront, with indexing and `Display` support
@@ -25,7 +25,7 @@ A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian
 
 ```toml
 [dependencies]
-hessian2 = "0.0.3"
+hessian2 = "0.0.4"
 ```
 
 ## Usage
