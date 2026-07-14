@@ -80,6 +80,10 @@ pub(crate) enum Header {
 
     BeginTypedList0(u8),
     BeginUntypedList0(u8),
+    BeginTypedList,
+    BeginUntypedList,
+    BeginTypedListVariable,
+    BeginUntypedListVariable,
 
     BeginUntypedMap,
     BeginTypedMap,
@@ -135,7 +139,12 @@ impl Header {
             Header::Date32 | Header::Date64 => HeaderFamily::Date,
 
             // list
-            Header::BeginTypedList0(_) | Header::BeginUntypedList0(_) => HeaderFamily::List,
+            Header::BeginTypedList0(_)
+            | Header::BeginUntypedList0(_)
+            | Header::BeginTypedList
+            | Header::BeginUntypedList
+            | Header::BeginTypedListVariable
+            | Header::BeginUntypedListVariable => HeaderFamily::List,
             // map
             Header::BeginUntypedMap | Header::BeginTypedMap | Header::End => HeaderFamily::Map,
             // class
@@ -233,6 +242,10 @@ where
 
             0x70..=0x77 => Header::BeginTypedList0(*first),
             0x78..=0x7f => Header::BeginUntypedList0(*first),
+            BC_LIST_FIXED => Header::BeginTypedList,
+            BC_LIST_FIXED_UNTYPED => Header::BeginUntypedList,
+            BC_LIST_VARIABLE => Header::BeginTypedListVariable,
+            BC_LIST_VARIABLE_UNTYPED => Header::BeginUntypedListVariable,
 
             BC_MAP_UNTYPED => Header::BeginUntypedMap,
             BC_MAP => Header::BeginTypedMap,
@@ -242,7 +255,10 @@ where
             0x60..=0x6f => Header::BeginClassReference(*first),
 
             other => {
-                return Err(Error::custom(format!("invalid hessian header {}", other)));
+                return Err(Error::custom(format!(
+                    "invalid hessian header 0x{:02x}",
+                    other
+                )));
             }
         };
 
@@ -315,19 +331,41 @@ where
         }
     }
 
+    /// Begins reading a list. The length is `None` for variable-length
+    /// lists, which are terminated by an end tag (`'Z'`).
     #[inline]
-    pub(crate) fn begin_list(&mut self) -> Result<(Option<Cachestr>, usize)> {
+    pub(crate) fn begin_list(&mut self) -> Result<(Option<Cachestr>, Option<usize>)> {
         match self.peek()? {
             Header::BeginTypedList0(n) => {
                 self.consume(1);
                 let length = (n - BC_LIST_DIRECT) as usize;
                 let class = Cachestr::from(self.read_string()?);
-                Ok((Some(class), length))
+                Ok((Some(class), Some(length)))
             }
             Header::BeginUntypedList0(n) => {
                 self.consume(1);
                 let length = (n - BC_LIST_DIRECT_UNTYPED) as usize;
-                Ok((None, length))
+                Ok((None, Some(length)))
+            }
+            Header::BeginTypedList => {
+                self.consume(1);
+                let class = Cachestr::from(self.read_string()?);
+                let length = self.read_i32()? as usize;
+                Ok((Some(class), Some(length)))
+            }
+            Header::BeginUntypedList => {
+                self.consume(1);
+                let length = self.read_i32()? as usize;
+                Ok((None, Some(length)))
+            }
+            Header::BeginTypedListVariable => {
+                self.consume(1);
+                let class = Cachestr::from(self.read_string()?);
+                Ok((Some(class), None))
+            }
+            Header::BeginUntypedListVariable => {
+                self.consume(1);
+                Ok((None, None))
             }
             other => unexpect_type(HeaderFamily::List, other.family()),
         }
@@ -1021,6 +1059,7 @@ mod tests {
 
         let (actual_class, n) = reader.begin_list()?;
 
+        let n = n.expect("fixed list must have a length");
         let mut actual = vec![];
         for _ in 0..n {
             actual.push(reader.read_string()?);

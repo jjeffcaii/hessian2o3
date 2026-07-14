@@ -173,12 +173,22 @@ impl<T: HessianDeserialize> HessianDeserialize for Option<T> {
 
 impl<T: HessianDeserialize> HessianDeserialize for Vec<T> {
     fn hessian_deserialize<R: io::Read>(de: &mut Deserializer<R>) -> Result<Self> {
-        let len = de.begin_list()?;
-        let mut items = Vec::with_capacity(len);
-        for _ in 0..len {
-            items.push(T::hessian_deserialize(de)?);
+        match de.begin_list()? {
+            Some(len) => {
+                let mut items = Vec::with_capacity(len);
+                for _ in 0..len {
+                    items.push(T::hessian_deserialize(de)?);
+                }
+                Ok(items)
+            }
+            None => {
+                let mut items = Vec::new();
+                while !de.try_end_list()? {
+                    items.push(T::hessian_deserialize(de)?);
+                }
+                Ok(items)
+            }
         }
-        Ok(items)
     }
 }
 
@@ -249,6 +259,21 @@ mod tests {
         // Vec<T: HessianSerialize>
         assert_eq!("78", hex(&Vec::<i32>::new())?);
         assert_eq!("7b919293", hex(&vec![1i32, 2, 3])?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_deserialize_variable_list() -> Result<()> {
+        // x57 value* 'Z': untyped variable-length list
+        let b = hex::decode("579192935a")?;
+        let v: Vec<i32> = hessian_from_slice(&b)?;
+        assert_eq!(vec![1, 2, 3], v);
+
+        // x55 type value* 'Z': typed variable-length list ("[int")
+        let b = hex::decode("55045b696e749192935a")?;
+        let v: Vec<i32> = hessian_from_slice(&b)?;
+        assert_eq!(vec![1, 2, 3], v);
 
         Ok(())
     }

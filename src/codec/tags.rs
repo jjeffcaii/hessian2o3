@@ -8,11 +8,9 @@ pub(crate) const BC_END: u8 = b'Z';
 pub(crate) const BC_LIST_DIRECT: u8 = 0x70;
 pub(crate) const BC_LIST_DIRECT_UNTYPED: u8 = 0x78;
 
-#[allow(dead_code)]
 pub(crate) const BC_LIST_VARIABLE: u8 = 0x55;
 pub(crate) const BC_LIST_FIXED: u8 = b'V';
 
-#[allow(dead_code)]
 pub(crate) const BC_LIST_VARIABLE_UNTYPED: u8 = 0x57;
 pub(crate) const BC_LIST_FIXED_UNTYPED: u8 = 0x58;
 

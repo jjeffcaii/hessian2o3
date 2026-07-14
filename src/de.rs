@@ -50,10 +50,26 @@ where
             HeaderFamily::Date => Value::from(self.r.read_date()?),
             HeaderFamily::List => {
                 let (_class, length) = self.r.begin_list()?;
-                let mut items = Vec::with_capacity(length);
-                for _ in 0..length {
-                    items.push(self.read_value()?);
-                }
+                let items = match length {
+                    Some(length) => {
+                        let mut items = Vec::with_capacity(length);
+                        for _ in 0..length {
+                            items.push(self.read_value()?);
+                        }
+                        items
+                    }
+                    None => {
+                        let mut items = Vec::new();
+                        loop {
+                            if let Header::End = self.r.peek()? {
+                                self.r.consume(1);
+                                break;
+                            }
+                            items.push(self.read_value()?);
+                        }
+                        items
+                    }
+                };
                 Value::from(items)
             }
             HeaderFamily::Map => {
@@ -173,11 +189,26 @@ where
         }
     }
 
-    /// Begins reading a list, returning its element count. The caller must
-    /// then read exactly that many values.
-    pub fn begin_list(&mut self) -> Result<usize, Error> {
+    /// Begins reading a list, returning its element count. A fixed-length
+    /// list returns `Some(n)` and the caller must then read exactly `n`
+    /// values; a variable-length list returns `None` and the caller must
+    /// read values until [`try_end_list`](Deserializer::try_end_list)
+    /// returns `true`.
+    pub fn begin_list(&mut self) -> Result<Option<usize>, Error> {
         let (_class, length) = self.r.begin_list()?;
         Ok(length)
+    }
+
+    /// Consumes the list end tag (`'Z'`) if it is the next value, returning
+    /// whether the list ended.
+    pub fn try_end_list(&mut self) -> Result<bool, Error> {
+        match self.r.peek()? {
+            Header::End => {
+                self.r.consume(1);
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
     }
 
     /// Begins reading a hessian object: consumes any pending class
@@ -511,13 +542,16 @@ impl<'de, 'a, R: io::Read + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
     where
         K: de::DeserializeSeed<'de>,
     {
-        match self.de.r.peek()? {
+        Ok(match self.de.r.peek()? {
             Header::End => {
                 self.de.r.consume(1);
-                Ok(None)
+                None
             }
-            _ => Ok(Some(seed.deserialize(&mut *self.de)?)),
-        }
+            _ => {
+                let key = seed.deserialize(&mut *self.de)?;
+                Some(key)
+            }
+        })
     }
 
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
@@ -530,11 +564,12 @@ impl<'de, 'a, R: io::Read + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
 
 struct SeqAccess<'a, R: 'a> {
     de: &'a mut Deserializer<R>,
-    remaining: usize,
+    // `None` for variable-length lists, which end with a 'Z' tag.
+    remaining: Option<usize>,
 }
 
 impl<'a, R: 'a> SeqAccess<'a, R> {
-    fn new(de: &'a mut Deserializer<R>, size: usize) -> Self {
+    fn new(de: &'a mut Deserializer<R>, size: Option<usize>) -> Self {
         SeqAccess {
             de,
             remaining: size,
@@ -549,11 +584,24 @@ impl<'de, 'a, R: io::Read + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
     where
         T: de::DeserializeSeed<'de>,
     {
-        if self.remaining == 0 {
-            return Ok(None);
+        match self.remaining {
+            Some(0) => Ok(None),
+            Some(ref mut n) => {
+                *n -= 1;
+                seed.deserialize(&mut *self.de).map(Some)
+            }
+            None => {
+                if let Header::End = self.de.r.peek()? {
+                    self.de.r.consume(1);
+                    return Ok(None);
+                }
+                seed.deserialize(&mut *self.de).map(Some)
+            }
         }
-        self.remaining -= 1;
-        seed.deserialize(&mut *self.de).map(Some)
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        self.remaining
     }
 }
 
@@ -701,6 +749,43 @@ mod tests {
 
         assert_eq!(Point { x: 1, y: 2 }, p1);
         assert_eq!(Point { x: 3, y: 4 }, p2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_slice_variable_list() -> anyhow::Result<()> {
+        init();
+
+        // x57 value* 'Z': untyped variable-length list
+        let b = hex::decode("579192935a")?;
+        assert_eq!(vec![1i32, 2, 3], from_slice::<Vec<i32>>(&b)?);
+
+        // x55 type value* 'Z': typed variable-length list ("[int")
+        let b = hex::decode("55045b696e749192935a")?;
+        assert_eq!(vec![1i32, 2, 3], from_slice::<Vec<i32>>(&b)?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_read_value_variable_list() -> anyhow::Result<()> {
+        init();
+
+        use crate::value::Value;
+
+        let b = hex::decode("579192935a")?;
+        let mut de = Deserializer::new(&b[..]);
+        let v = de.read_value()?;
+
+        assert_eq!(
+            Value::from(vec![
+                Value::from(1i32),
+                Value::from(2i32),
+                Value::from(3i32)
+            ]),
+            v
+        );
 
         Ok(())
     }
