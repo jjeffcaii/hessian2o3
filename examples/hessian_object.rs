@@ -1,10 +1,13 @@
 #[macro_use]
 extern crate log;
 
-use hessian2::{Hessian, hessian_from_slice, hessian_to_vec};
+use hessian2::HessianSerialize;
+use hessian2::hessian::hessian_from_slice;
+use hessian2::prelude::*;
+use hessian2::to_vec;
 
 // ── Section 1: simple struct ──────────────────────────────────────────────
-#[derive(Hessian, Debug, PartialEq)]
+#[derive(HessianSerialize, Debug, PartialEq)]
 #[hessian(class = "com.example.User")]
 struct User {
     id: i64,
@@ -13,14 +16,14 @@ struct User {
 }
 
 // ── Section 2: nested objects ─────────────────────────────────────────────
-#[derive(Hessian, Debug, PartialEq)]
+#[derive(HessianSerialize, Debug, PartialEq)]
 #[hessian(class = "com.example.Address")]
 struct Address {
     city: String,
     zipcode: String,
 }
 
-#[derive(Hessian, Debug, PartialEq)]
+#[derive(HessianSerialize, Debug, PartialEq)]
 #[hessian(class = "com.example.UserWithAddress")]
 struct UserWithAddress {
     id: i64,
@@ -30,7 +33,7 @@ struct UserWithAddress {
 }
 
 // ── Section 3: field rename (Rust snake_case → Java camelCase) ───────────
-#[derive(Hessian, Debug, PartialEq)]
+#[derive(HessianSerialize, Debug, PartialEq)]
 #[hessian(class = "com.example.Product")]
 struct Product {
     #[hessian(rename = "productId")]
@@ -39,7 +42,7 @@ struct Product {
     product_name: String,
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     pretty_env_logger::try_init_timed().ok();
 
     // ── Section 1 ──
@@ -50,9 +53,9 @@ fn main() {
         age: 30,
     };
 
-    let bytes = hessian_to_vec(&user).unwrap();
+    let bytes = to_vec(&Hessian(&user))?;
     info!("User: {}", hex::encode(&bytes));
-    let back: User = hessian_from_slice(&bytes).unwrap();
+    let back: User = hessian_from_slice(&bytes)?;
     assert_eq!(user, back);
     info!("Decoded: {:?}\n", back);
 
@@ -70,7 +73,7 @@ fn main() {
             zipcode: String::from("100000"),
         },
     };
-    let bytes = hessian_to_vec(&uwaddr).unwrap();
+    let bytes = to_vec(&Hessian(&uwaddr))?;
     let hex_str = hex::encode(&bytes);
     info!("UserWithAddress: {}", hex_str);
     // "com.example.Address" in hex: 636f6d2e6578616d706c652e41646472657373
@@ -81,7 +84,7 @@ fn main() {
         "Address class definition appears {} time(s) (expected 1 — second instance reuses ref)",
         class_def_count
     );
-    let back: UserWithAddress = hessian_from_slice(&bytes).unwrap();
+    let back: UserWithAddress = hessian_from_slice(&bytes)?;
     assert_eq!(uwaddr, back);
     info!("Decoded: {:?}\n", back);
 
@@ -91,10 +94,12 @@ fn main() {
         product_id: 42,
         product_name: String::from("Widget"),
     };
-    let bytes = hessian_to_vec(&product).unwrap();
+    let bytes = to_vec(&Hessian(&product))?;
     info!("Product: {}", hex::encode(&bytes));
     info!("(wire fields are 'productId' / 'productName', not Rust's snake_case names)");
-    let back: Product = hessian_from_slice(&bytes).unwrap();
+    let back: Product = hessian_from_slice(&bytes)?;
     assert_eq!(product, back);
     info!("Decoded: {:?}", back);
+
+    Ok(())
 }

@@ -1,4 +1,3 @@
-mod date;
 mod de;
 mod index;
 mod list;
@@ -17,5 +16,3 @@ pub use macros::to_value;
 pub use map::{Entry, Keys, Map, OccupiedEntry};
 pub use object::Object;
 pub use value::{PrimitiveValue, Value};
-
-pub use date::HessianDate;

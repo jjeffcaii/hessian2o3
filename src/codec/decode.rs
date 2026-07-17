@@ -944,7 +944,7 @@ mod tests {
     fn test_get_value_null() -> Result<()> {
         init();
 
-        let b = [b'N'];
+        let b = *b"N";
 
         let mut r = &b[..];
         assert!(Decoder::new(&mut r).read_null().is_ok());

@@ -285,7 +285,7 @@ impl<'a, R: io::Read> ObjectReader<'a, R> {
     }
 
     /// Deserializes the current field's value.
-    pub fn value<T: crate::HessianDeserialize>(&mut self) -> Result<T, Error> {
+    pub fn value<T: crate::HDeserialize>(&mut self) -> Result<T, Error> {
         T::hessian_deserialize(self.de)
     }
 

@@ -1,10 +1,9 @@
 use super::{List, Map, Object, PrimitiveValue, Value};
 use crate::Error;
-use serde::de::{self, Error as _, IntoDeserializer};
+use serde::de::{self, IntoDeserializer};
 use serde::{Deserializer, forward_to_deserialize_any};
 use std::fmt;
 use std::fmt::Formatter;
-use std::time::{Duration, SystemTime};
 
 impl<'de> de::Deserialize<'de> for Value {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -60,12 +59,8 @@ impl<'de> de::Deserialize<'de> for Value {
             where
                 E: de::Error,
             {
-                // Mirrors how `PrimitiveValue::Date` is serialized as unix
-                // millis (see `impl Serialize for PrimitiveValue`).
-                let millis = u64::try_from(value).map_err(de::Error::custom)?;
-                Ok(Value::from(
-                    SystemTime::UNIX_EPOCH + Duration::from_millis(millis),
-                ))
+                let i = i64::try_from(value).map_err(de::Error::custom)?;
+                Ok(Value::from(i))
             }
 
             fn visit_f32<E>(self, value: f32) -> Result<Value, E> {
@@ -303,13 +298,7 @@ impl<'de> Deserializer<'de> for Value {
             Value::Primitive(PrimitiveValue::Int(i)) => visitor.visit_i32(i),
             Value::Primitive(PrimitiveValue::Long(l)) => visitor.visit_i64(l),
             Value::Primitive(PrimitiveValue::Double(d)) => visitor.visit_f64(d),
-            Value::Primitive(PrimitiveValue::Date(d)) => {
-                let millis = d
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .map_err(Error::custom)?
-                    .as_millis() as i64;
-                visitor.visit_i64(millis)
-            }
+            Value::Primitive(PrimitiveValue::Date(d)) => visitor.visit_i64(d),
             Value::Primitive(PrimitiveValue::Binary(b)) => visitor.visit_byte_buf(b),
             Value::Primitive(PrimitiveValue::String(s)) => visitor.visit_string(s),
             Value::List(l) => visit_array(l, visitor),
@@ -365,13 +354,7 @@ impl<'de> Deserializer<'de> for PrimitiveValue {
             PrimitiveValue::Int(i) => visitor.visit_i32(i),
             PrimitiveValue::Long(l) => visitor.visit_i64(l),
             PrimitiveValue::Double(d) => visitor.visit_f64(d),
-            PrimitiveValue::Date(d) => {
-                let millis = d
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .map_err(Error::custom)?
-                    .as_millis();
-                visitor.visit_u128(millis)
-            }
+            PrimitiveValue::Date(d) => visitor.visit_i64(d),
             PrimitiveValue::Binary(b) => visitor.visit_byte_buf(b),
             PrimitiveValue::String(s) => visitor.visit_string(s),
         }
@@ -464,9 +447,9 @@ mod tests {
         };
 
         let value = to_value(&user)?;
-        info!("value: {:?}", &value);
+        info!("value: {:?}", value);
         let back: User = from_value(value)?;
-        info!("back: {:?}", &back);
+        info!("back: {:?}", back);
 
         assert_eq!(user, back);
 

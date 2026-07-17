@@ -5,11 +5,11 @@ use serde::ser::{self, Serialize};
 use std::io;
 use std::result::Result as StdResult;
 
-pub struct DefaultFormatter;
+pub(crate) struct DefaultFormatter;
 
 impl Formatter for DefaultFormatter {}
 
-pub trait Formatter {
+pub(crate) trait Formatter {
     #[inline]
     fn put_unit<W>(&mut self, w: &mut Encoder<W>) -> Result<()>
     where
@@ -214,14 +214,14 @@ impl<M: Serialize> Serialize for TypedMap<M> {
     }
 }
 
-pub struct Serializer<W, F> {
+pub(crate) struct Serializer<W, F> {
     encoder: Encoder<W>,
     formatter: F,
     pending_class: Option<&'static str>,
 }
 
 impl<W: io::Write, F: Formatter> Serializer<W, F> {
-    pub fn new(writer: W, formatter: F) -> Self {
+    pub(crate) fn new(writer: W, formatter: F) -> Self {
         Self {
             encoder: Encoder::new(writer),
             formatter,
@@ -230,7 +230,7 @@ impl<W: io::Write, F: Formatter> Serializer<W, F> {
     }
 }
 
-pub enum Compound<'a, W: 'a, F: 'a> {
+pub(crate) enum Compound<'a, W: 'a, F: 'a> {
     Seq { ser: &'a mut Serializer<W, F> },
     Map { ser: &'a mut Serializer<W, F> },
 }

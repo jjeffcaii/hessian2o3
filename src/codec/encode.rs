@@ -677,7 +677,7 @@ mod tests {
 
             let s = hex::encode(&w);
 
-            info!("{:?}: {}", &m, &s);
+            info!("{:?}: {}", m, s);
 
             assert!(!s.is_empty());
         }
@@ -697,7 +697,7 @@ mod tests {
 
             let s = hex::encode(&w);
 
-            info!("{:?}: {}", &m, &s);
+            info!("{:?}: {}", m, s);
 
             assert_eq!(
                 "4d116a6176612e7574696c2e547265654d61709103666f6f920362617293037175785a",

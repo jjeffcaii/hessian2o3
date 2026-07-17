@@ -16,16 +16,17 @@ A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian
 ## Features
 
 - **Encoding & decoding** — full Hessian 2.0 binary serialization, including compact int/long/double forms, chunked strings/binary, typed lists/maps, and class-definition reuse for objects; decoding accepts every list form (direct, fixed-length, and `'Z'`-terminated variable-length)
-- **serde integration** — encode/decode any `Serialize` / `Deserialize` type via `to_vec` / `to_writer` / `from_slice` / `from_reader`
-- **`#[derive(Hessian)]`** — map Rust structs to Java classes with `#[hessian(class = "...")]` and per-field `#[hessian(rename = "...")]`
+- **serde integration** — encode/decode any `Serialize` / `Deserialize` type via `to_vec` / `to_writer` / `from_slice` / `from_reader`; wrap a value as `Hessian(&value)` to make `to_vec`/`to_writer` prefer its manual `HSerialize` impl over `Serialize` when a type implements both
+- **`#[derive(HessianSerialize)]`** — map Rust structs to Java classes with `#[hessian(class = "...")]` and per-field `#[hessian(rename = "...")]`, generating both `HSerialize` and `HDeserialize` impls
 - **Dynamic `Value` type** — decode arbitrary Hessian data without knowing its shape upfront, with indexing and `Display` support
 - **`hessian!` macro** — build a `Value` from a JSON-like literal, similar to `serde_json::json!`
+- **`hessian2::prelude`** — `use hessian2::prelude::*;` pulls in the common traits and derive macro (`HSerialize`, `HDeserialize`, `HessianSerialize`, `Hessian`, `HessianWriteable`) in one line
 
 ## Installation
 
 ```toml
 [dependencies]
-hessian2 = "0.0.4"
+hessian2 = "0.0.5"
 ```
 
 ## Usage
@@ -52,14 +53,23 @@ assert_eq!(point, back);
 
 `to_writer` and `from_reader` are also available for streaming to/from `io::Write` / `io::Read`.
 
-### Java objects with `#[derive(Hessian)]`
-
-To interop with Java, encode a struct as a Hessian *object* carrying a Java class name:
+If a type implements both `Serialize` and `HSerialize` (see below), `to_vec`/`to_writer` default to the `Serialize` path; wrap it in `Hessian(&value)` to force the `HSerialize` path instead:
 
 ```rust
-use hessian2::{Hessian, hessian_from_slice, hessian_to_vec};
+use hessian2::{Hessian, to_vec};
 
-#[derive(Hessian, Debug, PartialEq)]
+let bytes = to_vec(&Hessian(&point))?;
+```
+
+### Java objects with `#[derive(HessianSerialize)]`
+
+To interop with Java, encode a struct as a Hessian *object* carrying a Java class name. `#[derive(HessianSerialize)]` generates both `HSerialize` and `HDeserialize` impls:
+
+```rust
+use hessian2::HessianSerialize;
+use hessian2::hessian::{hessian_from_slice, hessian_to_vec};
+
+#[derive(HessianSerialize, Debug, PartialEq)]
 #[hessian(class = "com.example.Point")]
 struct Point {
     x: i32,
@@ -73,7 +83,7 @@ let back: Point = hessian_from_slice(&bytes)?;
 assert_eq!(point, back);
 ```
 
-Nested `#[derive(Hessian)]` structs are supported, and repeated classes reuse Hessian class-definition references automatically.
+Nested `#[derive(HessianSerialize)]` structs are supported, and repeated classes reuse Hessian class-definition references automatically.
 
 ### Building a `Value` with the `hessian!` macro
 
@@ -127,6 +137,7 @@ pub enum Value {
     List(List),
     Map(Map),
     Object(Object),             // Java object with class name and named fields
+    Ref(usize),                 // back-reference to a previously decoded value
 }
 ```
 
@@ -145,7 +156,7 @@ It supports `Display`, `Debug`, `PartialEq`, and indexing by integer (lists) or 
 | `Option<T>` | null or T |
 | `Vec<T>` | untyped fixed list |
 | `HashMap<K, V>` | untyped map |
-| structs via `#[derive(Hessian)]` | Java object |
+| structs via `#[derive(HessianSerialize)]` | Java object |
 
 ## Examples
 
@@ -153,7 +164,7 @@ Runnable examples live in [`examples/`](examples/):
 
 ```bash
 cargo run --example hessian_macro    # hessian! literals
-cargo run --example hessian_object   # #[derive(Hessian)] round trips
+cargo run --example hessian_object   # #[derive(HessianSerialize)] round trips
 ```
 
 ## Development

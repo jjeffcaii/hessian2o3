@@ -3,7 +3,7 @@ extern crate log;
 
 use hessian2::{hessian, to_vec};
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     pretty_env_logger::try_init_timed().ok();
 
     // ── Section 1: object literal ─────────────────────────────────────────
@@ -14,7 +14,7 @@ fn main() {
         "age": 18,
     });
     info!("Value: {:?}", user);
-    let bytes = to_vec(&user).unwrap();
+    let bytes = to_vec(&user)?;
     info!("Encoded: {}\n", hex::encode(&bytes));
 
     // ── Section 2: arrays and nested containers ─────────────────────────────
@@ -37,7 +37,7 @@ fn main() {
         "age": 18,
     });
     info!("Value: {}", user_obj);
-    let bytes = to_vec(&user_obj).unwrap();
+    let bytes = to_vec(&user_obj)?;
     info!("Encoded: {}\n", hex::encode(&bytes));
 
     // ── Section 4: scalars, null, and variables ─────────────────────────────
@@ -48,4 +48,6 @@ fn main() {
     info!("123     => {:?}", hessian!(123));
     info!("\"foo\"   => {:?}", hessian!("foo"));
     info!("age (var) => {:?}", hessian!(age));
+
+    Ok(())
 }

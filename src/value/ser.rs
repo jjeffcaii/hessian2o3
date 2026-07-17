@@ -2,7 +2,6 @@ use super::value::Value;
 use crate::Error;
 use crate::value::{List, Map, Object, PrimitiveValue};
 use serde::{Serialize, ser};
-use std::time::SystemTime;
 
 impl serde::Serialize for Value {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -30,13 +29,7 @@ impl serde::Serialize for PrimitiveValue {
             PrimitiveValue::Int(i) => serializer.serialize_i32(*i),
             PrimitiveValue::Long(l) => serializer.serialize_i64(*l),
             PrimitiveValue::Double(d) => serializer.serialize_f64(*d),
-            PrimitiveValue::Date(d) => {
-                let unix_mills = d
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("invalid date")
-                    .as_millis();
-                serializer.serialize_u128(unix_mills)
-            }
+            PrimitiveValue::Date(unix_millis) => serializer.serialize_i64(*unix_millis),
             PrimitiveValue::Binary(b) => serializer.serialize_bytes(b.as_ref()),
             PrimitiveValue::String(s) => serializer.serialize_str(s),
         }

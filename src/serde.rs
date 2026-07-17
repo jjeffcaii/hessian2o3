@@ -1,26 +1,66 @@
 use super::de::Deserializer;
 use super::ser::{DefaultFormatter, Serializer};
 use crate::Result;
+use crate::codec::Encoder;
+use crate::hessian::HSerialize;
 use crate::value::Value;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::any::{Any, TypeId};
 use std::io;
 
+// Rust has no stable trait specialization, so `to_writer`/`to_vec` can't
+// pick a `HSerialize` impl over a `Serialize` impl purely based on
+// what `T` happens to implement: a blanket `impl<T: Serialize> ToHessian`
+// and a blanket `impl<T: HSerialize> ToHessian` would overlap for any
+// T implementing both. Dispatching on the concrete type instead (`T` vs
+// `HessianRef<T>`) sidesteps that: the two impls below target disjoint
+// Self types, so there is no overlap and no need for a second trait bound
+// to be "proven" inside a generic function body.
+pub trait HessianWriteable {
+    fn write_to<W: io::Write>(&self, writer: W) -> Result<()>;
+}
+
+impl<T: ?Sized + Serialize> HessianWriteable for T {
+    fn write_to<W: io::Write>(&self, writer: W) -> Result<()> {
+        let mut ser = Serializer::new(writer, DefaultFormatter);
+        self.serialize(&mut ser)
+    }
+}
+
+/// Wrap a value in `HessianRef` to make [`to_writer`]/[`to_vec`] encode it
+/// via its [`HSerialize`] implementation instead of `serde`.
+pub struct Hessian<'a, T: ?Sized>(pub &'a T);
+
+impl<'a, T> From<&'a T> for Hessian<'a, T> {
+    fn from(value: &'a T) -> Hessian<'a, T> {
+        Hessian(value)
+    }
+}
+
+impl<'a, T> HessianWriteable for Hessian<'a, T>
+where
+    T: ?Sized + HSerialize,
+{
+    fn write_to<W: io::Write>(&self, mut writer: W) -> Result<()> {
+        let mut enc = Encoder::new(&mut writer);
+        self.0.hessian_serialize(&mut enc)
+    }
+}
+
 #[inline]
 pub fn to_writer<W, T>(writer: W, value: &T) -> Result<()>
 where
     W: io::Write,
-    T: ?Sized + Serialize,
+    T: ?Sized + HessianWriteable,
 {
-    let mut ser = Serializer::new(writer, DefaultFormatter);
-    value.serialize(&mut ser)
+    value.write_to(writer)
 }
 
 #[inline]
 pub fn to_vec<T>(value: &T) -> Result<Vec<u8>>
 where
-    T: ?Sized + Serialize,
+    T: ?Sized + HessianWriteable,
 {
     let mut buf = Vec::with_capacity(128);
     to_writer(&mut buf, value)?;
@@ -65,6 +105,21 @@ mod tests {
     use serde::Deserialize;
     use serde_json::json;
 
+    #[derive(Serialize)]
+    struct Point {
+        x: i32,
+        y: i32,
+    }
+
+    impl HSerialize for Point {
+        fn hessian_serialize<W: io::Write>(&self, enc: &mut Encoder<W>) -> Result<()> {
+            enc.begin_object("com.example.Point", &["x", "y"])?;
+            self.x.hessian_serialize(enc)?;
+            self.y.hessian_serialize(enc)?;
+            Ok(())
+        }
+    }
+
     fn init() {
         pretty_env_logger::try_init_timed().ok();
     }
@@ -108,6 +163,35 @@ mod tests {
         let pojo = from_value::<Pojo>(v)?;
 
         info!("from_value: {:?}", pojo);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_to_writer_plain_uses_serde() -> anyhow::Result<()> {
+        init();
+
+        // Point implements both `Serialize` and `HSerialize`; passed
+        // unwrapped, `to_vec` must go through the `Serialize` path.
+        let bytes = to_vec(&Point { x: 1, y: 2 })?;
+        assert_ne!(
+            "4311636f6d2e6578616d706c652e506f696e749201780179609192",
+            hex::encode(&bytes)
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_to_writer_hessian_ref_uses_hessian_serialize() -> anyhow::Result<()> {
+        init();
+
+        let point = Point { x: 1, y: 2 };
+        let bytes = to_vec(&Hessian(&point))?;
+        assert_eq!(
+            "4311636f6d2e6578616d706c652e506f696e749201780179609192",
+            hex::encode(&bytes)
+        );
 
         Ok(())
     }

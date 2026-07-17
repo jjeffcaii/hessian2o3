@@ -2,13 +2,14 @@
 extern crate log;
 use anyhow::Result;
 
-use hessian2::{Hessian, hessian_from_slice, hessian_to_vec};
+use hessian2::HessianSerialize;
+use hessian2::hessian::{hessian_from_slice, hessian_to_vec};
 
 fn init() {
     pretty_env_logger::try_init_timed().ok();
 }
 
-#[derive(Hessian, Debug, PartialEq)]
+#[derive(HessianSerialize, Debug, PartialEq)]
 #[hessian(class = "com.example.Point")]
 struct Point {
     x: i32,
@@ -28,7 +29,7 @@ fn test_derive_simple_struct() -> Result<()> {
     Ok(())
 }
 
-#[derive(Hessian, Debug, PartialEq)]
+#[derive(HessianSerialize, Debug, PartialEq)]
 #[hessian(class = "com.example.User")]
 struct User {
     #[hessian(rename = "id")]
@@ -67,7 +68,7 @@ fn test_derive_with_rename() -> Result<()> {
     Ok(())
 }
 
-#[derive(Hessian, Debug, PartialEq)]
+#[derive(HessianSerialize, Debug, PartialEq)]
 #[hessian(class = "com.example.Address")]
 struct Address {
     #[hessian(rename = "city")]
@@ -76,7 +77,7 @@ struct Address {
     zipcode: String,
 }
 
-#[derive(Hessian, Debug, PartialEq)]
+#[derive(HessianSerialize, Debug, PartialEq)]
 #[hessian(class = "com.example.UserFull")]
 struct UserFull {
     #[hessian(rename = "id")]
@@ -132,7 +133,7 @@ fn test_nested_objects_match_encode_test() -> Result<()> {
 fn test_option_and_vec_fields() -> Result<()> {
     init();
 
-    #[derive(Hessian, Debug, PartialEq)]
+    #[derive(HessianSerialize, Debug, PartialEq)]
     #[hessian(class = "com.example.Container")]
     struct Container {
         #[hessian(rename = "maybeVal")]
@@ -239,7 +240,7 @@ fn test_derive_roundtrip_nested() -> Result<()> {
 fn test_derive_roundtrip_option_and_vec() -> Result<()> {
     init();
 
-    #[derive(Hessian, Debug, PartialEq)]
+    #[derive(HessianSerialize, Debug, PartialEq)]
     #[hessian(class = "com.example.Container")]
     struct Container {
         #[hessian(rename = "maybeVal")]

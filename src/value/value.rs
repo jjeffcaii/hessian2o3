@@ -1,18 +1,19 @@
 use super::list::List;
 use super::map::Map;
 use super::object::Object;
+use crate::Error;
 use crate::misc::encode_base64;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
+use std::result::Result as StdResult;
 use std::time;
-use std::time::SystemTime;
 
 pub enum PrimitiveValue {
     Bool(bool),
     Int(i32),
     Long(i64),
     Double(f64),
-    Date(SystemTime),
+    Date(i64),
     Binary(Vec<u8>),
     String(String),
 }
@@ -24,16 +25,10 @@ impl Display for PrimitiveValue {
             PrimitiveValue::Int(i) => write!(f, "{}", i),
             PrimitiveValue::Long(l) => write!(f, "{}", l),
             PrimitiveValue::Double(d) => write!(f, "{}", d),
-            PrimitiveValue::Date(d) => {
-                let unix_mills = d
-                    .duration_since(time::UNIX_EPOCH)
-                    .expect("time went backwards");
-
-                write!(f, "{}", unix_mills.as_millis())
-            }
+            PrimitiveValue::Date(d) => write!(f, "{}", d),
             PrimitiveValue::Binary(b) => {
                 let b64 = encode_base64(b);
-                write!(f, "{:?}", &b64)
+                write!(f, "{:?}", b64)
             }
             PrimitiveValue::String(s) => write!(f, "{:?}", s),
         }
@@ -118,9 +113,16 @@ impl From<f64> for PrimitiveValue {
     }
 }
 
-impl From<SystemTime> for PrimitiveValue {
-    fn from(t: SystemTime) -> Self {
-        PrimitiveValue::Date(t)
+impl TryFrom<time::SystemTime> for PrimitiveValue {
+    type Error = Error;
+
+    fn try_from(t: time::SystemTime) -> StdResult<Self, Self::Error> {
+        if let Ok(du) = t.duration_since(time::UNIX_EPOCH) {
+            if let Ok(unix_mills) = du.as_millis().try_into() {
+                return Ok(PrimitiveValue::Date(unix_mills));
+            }
+        }
+        Err(Error::Custom(format!("invalid system time {:?}", t)))
     }
 }
 
@@ -252,9 +254,11 @@ impl From<String> for Value {
     }
 }
 
-impl From<SystemTime> for Value {
-    fn from(value: SystemTime) -> Self {
-        Self::Primitive(PrimitiveValue::Date(value))
+impl TryFrom<time::SystemTime> for Value {
+    type Error = Error;
+
+    fn try_from(value: time::SystemTime) -> StdResult<Self, Self::Error> {
+        PrimitiveValue::try_from(value).map(Self::Primitive)
     }
 }
 

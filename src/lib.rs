@@ -24,16 +24,15 @@ pub mod de;
 pub(crate) mod error;
 pub mod hessian;
 mod misc;
+pub mod prelude;
 pub(crate) mod ser;
+
 pub(crate) mod serde;
 pub mod value;
 
 pub use error::Error;
-pub use hessian::{
-    HessianDeserialize, HessianSerialize, hessian_from_reader, hessian_from_slice, hessian_to_vec,
-    hessian_to_writer,
-};
-pub use hessian2_derive::Hessian;
+pub use hessian::{HDeserialize, HSerialize};
+pub use hessian2_derive::HessianSerialize;
 
 pub type Result<T> = std::result::Result<T, error::Error>;
 

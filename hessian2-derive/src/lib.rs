@@ -1,12 +1,9 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{
-    Data, DeriveInput, Error, Fields, Lit, Meta, MetaList, MetaNameValue, NestedMeta,
-    parse_macro_input,
-};
+use syn::{Data, DeriveInput, Error, Fields, Lit, LitStr, Token, parse_macro_input};
 
-#[proc_macro_derive(Hessian, attributes(hessian))]
-pub fn derive_hessian_object(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(HessianSerialize, attributes(hessian))]
+pub fn derive_hessian_serialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     match expand(input) {
         Ok(ts) => ts.into(),
@@ -48,12 +45,12 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
 
     let field_serializers = rust_idents.iter().map(|ident| {
         quote! {
-            ::hessian2::HessianSerialize::hessian_serialize(&self.#ident, w)?;
+            ::hessian2::HSerialize::hessian_serialize(&self.#ident, w)?;
         }
     });
 
     Ok(quote! {
-        impl ::hessian2::HessianSerialize for #name {
+        impl ::hessian2::HSerialize for #name {
             fn hessian_serialize<W: ::std::io::Write>(
                 &self,
                 w: &mut ::hessian2::codec::Encoder<W>,
@@ -67,7 +64,7 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             }
         }
 
-        impl ::hessian2::HessianDeserialize for #name {
+        impl ::hessian2::HDeserialize for #name {
             fn hessian_deserialize<__R: ::std::io::Read>(
                 de: &mut ::hessian2::de::Deserializer<__R>,
             ) -> ::hessian2::Result<Self> {
@@ -103,49 +100,32 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     })
 }
 
-fn extract_class(input: &DeriveInput) -> syn::Result<String> {
-    for attr in &input.attrs {
-        if attr.path.is_ident("hessian") {
-            if let Ok(Meta::List(MetaList { nested, .. })) = attr.parse_meta() {
-                for item in &nested {
-                    if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-                        path,
-                        lit: Lit::Str(s),
-                        ..
-                    })) = item
-                    {
-                        if path.is_ident("class") {
-                            return Ok(s.value());
-                        }
-                    }
-                }
-            }
+fn extract_hessian_str_arg(attrs: &[syn::Attribute], key: &str) -> syn::Result<Option<String>> {
+    let mut found = None;
+    for attr in attrs {
+        if !attr.path().is_ident("hessian") {
+            continue;
         }
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident(key) {
+                let s: LitStr = meta.value()?.parse()?;
+                found = Some(s.value());
+            } else if meta.input.peek(Token![=]) {
+                // consume and ignore other `key = value` args in this list
+                let _: Lit = meta.value()?.parse()?;
+            }
+            Ok(())
+        })?;
     }
-    Err(Error::new_spanned(
-        &input.ident,
-        "Hessian requires #[hessian(class = \"...\")]",
-    ))
+    Ok(found)
+}
+
+fn extract_class(input: &DeriveInput) -> syn::Result<String> {
+    extract_hessian_str_arg(&input.attrs, "class")?.ok_or_else(|| {
+        Error::new_spanned(&input.ident, "Hessian requires #[hessian(class = \"...\")]")
+    })
 }
 
 fn extract_rename(attrs: &[syn::Attribute]) -> syn::Result<Option<String>> {
-    for attr in attrs {
-        if attr.path.is_ident("hessian") {
-            if let Ok(Meta::List(MetaList { nested, .. })) = attr.parse_meta() {
-                for item in &nested {
-                    if let NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-                        path,
-                        lit: Lit::Str(s),
-                        ..
-                    })) = item
-                    {
-                        if path.is_ident("rename") {
-                            return Ok(Some(s.value()));
-                        }
-                    }
-                }
-            }
-        }
-    }
-    Ok(None)
+    extract_hessian_str_arg(attrs, "rename")
 }
