@@ -29,7 +29,7 @@ impl serde::Serialize for PrimitiveValue {
             PrimitiveValue::Int(i) => serializer.serialize_i32(*i),
             PrimitiveValue::Long(l) => serializer.serialize_i64(*l),
             PrimitiveValue::Double(d) => serializer.serialize_f64(*d),
-            PrimitiveValue::Date(unix_millis) => serializer.serialize_i64(*unix_millis),
+            PrimitiveValue::Date(unix_millis) => crate::date::serialize(unix_millis, serializer),
             PrimitiveValue::Binary(b) => serializer.serialize_bytes(b.as_ref()),
             PrimitiveValue::String(s) => serializer.serialize_str(s),
         }
@@ -253,9 +253,9 @@ impl ser::SerializeStructVariant for SerializeStructVariant {
 }
 
 #[derive(Default)]
-pub struct Serializer {}
-
-impl Serializer {}
+pub struct Serializer {
+    pending_date: bool,
+}
 
 impl serde::Serializer for &mut Serializer {
     type Ok = Value;
@@ -285,6 +285,9 @@ impl serde::Serializer for &mut Serializer {
     }
 
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
+        if std::mem::take(&mut self.pending_date) {
+            return Ok(Value::Primitive(PrimitiveValue::Date(v)));
+        }
         Ok(Value::from(v))
     }
 
@@ -357,12 +360,15 @@ impl serde::Serializer for &mut Serializer {
 
     fn serialize_newtype_struct<T>(
         self,
-        _name: &'static str,
+        name: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + Serialize,
     {
+        if name == crate::date::MARKER {
+            self.pending_date = true;
+        }
         value.serialize(self)
     }
 

@@ -1,7 +1,7 @@
 use crate::cachestr::Cachestr;
 use crate::codec::{self, Fields, Header, HeaderFamily};
 use crate::error::Error;
-use crate::value::{Map, Object, Value};
+use crate::value::{Map, Object, PrimitiveValue, Value};
 use serde::de::{self, Error as _, IntoDeserializer as _};
 use serde::forward_to_deserialize_any;
 use smallvec::SmallVec;
@@ -51,7 +51,7 @@ where
             HeaderFamily::Binary => Value::from(self.r.read_binary()?),
             HeaderFamily::String => Value::from(self.r.read_string()?),
             HeaderFamily::Double => Value::from(self.r.read_f64()?),
-            HeaderFamily::Date => Value::from(self.r.read_date()?),
+            HeaderFamily::Date => Value::Primitive(PrimitiveValue::Date(self.r.read_date()?)),
             HeaderFamily::List => {
                 let (_class, length) = self.r.begin_list()?;
                 let items = match length {

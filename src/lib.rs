@@ -20,6 +20,7 @@ pub mod cachestr {
 }
 
 pub mod codec;
+pub mod date;
 pub mod de;
 pub(crate) mod error;
 pub mod hessian;

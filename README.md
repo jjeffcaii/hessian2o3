@@ -21,6 +21,7 @@ A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian
 - **Dynamic `Value` type** — decode arbitrary Hessian data without knowing its shape upfront, with indexing and `Display` support
 - **`hessian!` macro** — build a `Value` from a JSON-like literal, similar to `serde_json::json!`
 - **`hessian2::prelude`** — `use hessian2::prelude::*;` pulls in the common traits and derive macro (`HSerialize`, `HDeserialize`, `HessianSerialize`, `Hessian`, `HessianWriteable`) in one line
+- **Hessian `Date` support** — `#[serde(with = "hessian2::date")]` on an `i64` (Unix milliseconds) field encodes/decodes it as a native Hessian date instead of a plain long
 
 ## Installation
 
@@ -60,6 +61,32 @@ use hessian2::{Hessian, to_vec};
 
 let bytes = to_vec(&Hessian(&point))?;
 ```
+
+### Hessian `Date` fields
+
+`serde::Serializer`/`Deserializer` have no dedicated hook for Hessian's `Date` wire type, so a plain `i64` field is encoded as a `long` by default. Opt an `i64` (Unix milliseconds) field into the native `Date` encoding (tag `0x4a`/`0x4b`) with `#[serde(with = "hessian2::date")]`:
+
+```rust
+use hessian2::{from_slice, to_vec};
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct Employee {
+    name: String,
+    #[serde(with = "hessian2::date")]
+    created_at: i64,
+}
+
+let employee = Employee {
+    name: "Alice".to_owned(),
+    created_at: 1_749_540_617_123,
+};
+let bytes = to_vec(&employee)?;
+let back: Employee = from_slice(&bytes)?;
+assert_eq!(employee, back);
+```
+
+Decoding accepts either wire flavor (`Date` or a plain `long`) for such a field. This also applies to the dynamic `Value` type: `PrimitiveValue::Date` round-trips through `to_vec`/`from_slice` as a native Hessian date.
 
 ### Java objects with `#[derive(HessianSerialize)]`
 
@@ -156,6 +183,7 @@ It supports `Display`, `Debug`, `PartialEq`, and indexing by integer (lists) or 
 | `Option<T>` | null or T |
 | `Vec<T>` | untyped fixed list |
 | `HashMap<K, V>` | untyped map |
+| `i64` with `#[serde(with = "hessian2::date")]` | date |
 | structs via `#[derive(HessianSerialize)]` | Java object |
 
 ## Examples

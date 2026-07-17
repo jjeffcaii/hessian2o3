@@ -424,6 +424,9 @@ where
     }
 
     fn serialize_i64(self, v: i64) -> StdResult<Self::Ok, Self::Error> {
+        if self.pending_class.take() == Some(crate::date::MARKER) {
+            return self.encoder.put_date(crate::misc::millis_to_system_time(v));
+        }
         self.formatter.put_i64(&mut self.encoder, v)
     }
 
