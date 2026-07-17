@@ -1,6 +1,6 @@
 [package]
 name = "hessian2-derive"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2024"
 license = "MIT"
 readme = "../README.md"

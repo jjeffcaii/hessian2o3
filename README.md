@@ -26,7 +26,7 @@ A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian
 
 ```toml
 [dependencies]
-hessian2 = "0.0.5"
+hessian2 = "0.0.6"
 ```
 
 ## Usage
