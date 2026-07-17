@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 project is still a work in progress and does not yet promise strict
 [Semantic Versioning](https://semver.org/) guarantees between `0.0.x` releases.
 
+## [0.0.7] - 2026-07-17
+
+### Added
+
+- Hessian `Date` support via `#[serde(with = "hessian2::date")]` on an `i64` (Unix
+  milliseconds) field, encoding it as the native Hessian date wire tag (`0x4a`/`0x4b`)
+  instead of a plain long; decoding accepts either wire flavor
+
+### Fixed
+
+- `PrimitiveValue::Date` now round-trips correctly through `to_vec`/`from_slice` and
+  `to_value`/`from_value` instead of silently degrading to `PrimitiveValue::Long`
+
 ## [0.0.6] - 2026-07-17
 
 ### Changed
