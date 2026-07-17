@@ -149,6 +149,7 @@ pub enum Value {
     List(List),
     Map(Map),
     Object(Object),
+    Ref(usize),
 }
 
 impl Display for Value {
@@ -159,6 +160,9 @@ impl Display for Value {
             Value::List(v) => Display::fmt(v, f),
             Value::Map(v) => Display::fmt(v, f),
             Value::Object(o) => Display::fmt(o, f),
+            Value::Ref(i) => {
+                write!(f, "Reference({})", i)
+            }
         }
     }
 }
@@ -171,6 +175,7 @@ impl Debug for Value {
             Value::List(l) => Debug::fmt(l, f),
             Value::Map(m) => Debug::fmt(m, f),
             Value::Object(o) => Debug::fmt(o, f),
+            Value::Ref(i) => write!(f, "Reference({})", i),
         }
     }
 }

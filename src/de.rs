@@ -37,6 +37,10 @@ where
         let header = self.r.peek()?;
 
         let value = match header.family() {
+            HeaderFamily::Ref => {
+                let ref_idx = self.r.read_ref()?;
+                Value::Ref(ref_idx)
+            }
             HeaderFamily::Null => {
                 self.r.read_null()?;
                 Value::Null
@@ -305,6 +309,11 @@ where
         debug!("begin deserialize_any: header={:?}", header);
 
         match header.family() {
+            HeaderFamily::Ref => {
+                let ref_idx = self.r.read_ref()?;
+                visitor.visit_i32(ref_idx as i32)
+                // todo!("handle ref {}", ref_idx)
+            }
             HeaderFamily::Null => {
                 self.r.read_null()?;
                 visitor.visit_unit()

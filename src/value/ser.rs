@@ -15,6 +15,7 @@ impl serde::Serialize for Value {
             Value::List(l) => l.serialize(serializer),
             Value::Map(m) => m.serialize(serializer),
             Value::Object(o) => o.serialize(serializer),
+            Value::Ref(idx) => idx.serialize(serializer),
         }
     }
 }

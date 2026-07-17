@@ -101,7 +101,7 @@ impl Display for Object {
         use fmt::Write;
 
         f.write_str(self.class.as_ref())?;
-        f.write_char('{')?;
+        f.write_char('(')?;
 
         for i in 0..self.fields.len() {
             if i != 0 {
@@ -111,11 +111,11 @@ impl Display for Object {
             let field = &self.fields[i];
             let value = &self.values[i];
 
-            write!(f, "{:?}: ", field.as_ref())?;
+            write!(f, "{}=", field.as_ref())?;
             Display::fmt(value, f)?;
         }
 
-        f.write_char('}')?;
+        f.write_char(')')?;
 
         Ok(())
     }

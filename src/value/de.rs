@@ -307,14 +307,15 @@ impl<'de> Deserializer<'de> for Value {
                 let millis = d
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map_err(Error::custom)?
-                    .as_millis();
-                visitor.visit_u128(millis)
+                    .as_millis() as i64;
+                visitor.visit_i64(millis)
             }
             Value::Primitive(PrimitiveValue::Binary(b)) => visitor.visit_byte_buf(b),
             Value::Primitive(PrimitiveValue::String(s)) => visitor.visit_string(s),
             Value::List(l) => visit_array(l, visitor),
             Value::Map(m) => visit_map_value(m, visitor),
             Value::Object(o) => visit_object(o, visitor),
+            Value::Ref(idx) => visitor.visit_i32(idx as i32),
         }
     }
 

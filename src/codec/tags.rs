@@ -58,3 +58,5 @@ pub(crate) const BC_OBJECT_DIRECT: u8 = 0x60;
 pub(crate) const OBJECT_DIRECT_MAX: usize = 0x0f;
 
 pub(crate) const BC_CLASS: u8 = b'C';
+
+pub(crate) const BC_REF: u8 = 0x51;

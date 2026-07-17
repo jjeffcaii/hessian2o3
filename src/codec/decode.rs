@@ -21,6 +21,8 @@ pub(crate) enum HeaderFamily {
     Map,
     Class,
     ClassRef,
+
+    Ref,
 }
 
 impl fmt::Display for HeaderFamily {
@@ -38,6 +40,7 @@ impl fmt::Display for HeaderFamily {
             HeaderFamily::Map => f.write_str("map"),
             HeaderFamily::Class => f.write_str("class"),
             HeaderFamily::ClassRef => f.write_str("class_ref"),
+            HeaderFamily::Ref => f.write_str("ref"),
         }
     }
 }
@@ -91,6 +94,8 @@ pub(crate) enum Header {
 
     BeginClass,
     BeginClassReference(u8),
+
+    Ref,
 }
 
 impl Header {
@@ -151,6 +156,8 @@ impl Header {
             Header::BeginClass => HeaderFamily::Class,
             // object
             Header::BeginClassReference(_) => HeaderFamily::ClassRef,
+            // ref
+            Header::Ref => HeaderFamily::Ref,
         }
     }
 }
@@ -254,6 +261,8 @@ where
             BC_CLASS => Header::BeginClass,
             0x60..=0x6f => Header::BeginClassReference(*first),
 
+            BC_REF => Header::Ref,
+
             other => {
                 return Err(Error::custom(format!(
                     "invalid hessian header 0x{:02x}",
@@ -290,6 +299,22 @@ where
     }
 
     #[inline]
+    pub(crate) fn read_ref(&mut self) -> Result<usize> {
+        match self.peek()? {
+            Header::Ref => {
+                self.consume(1);
+
+                let i = self.read_i32()?;
+
+                trace!("read ref: {}", i);
+
+                Ok(i as usize)
+            }
+            other => unexpect_type(HeaderFamily::Ref, other.family()),
+        }
+    }
+
+    #[inline]
     pub(crate) fn read_class(&mut self) -> Result<usize> {
         match self.peek()? {
             Header::BeginClass => {
@@ -304,7 +329,7 @@ where
                     fields.push(field);
                 }
 
-                debug!("read class '{}': fields={:?}", class.as_ref(), fields);
+                trace!("read class '{}': fields={:?}", class.as_ref(), fields);
 
                 let idx = self.ctx.get_or_insert_default().insert(class, fields);
                 Ok(idx)
@@ -321,10 +346,14 @@ where
 
                 let class = Cachestr::from(self.read_string()?);
 
+                trace!("begin typed_map: {}", class.as_ref());
+
                 Ok(Some(class))
             }
             Header::BeginUntypedMap => {
                 self.consume(1);
+                trace!("begin untyped_map");
+
                 Ok(None)
             }
             other => unexpect_type(HeaderFamily::Map, other.family()),
@@ -340,31 +369,56 @@ where
                 self.consume(1);
                 let length = (n - BC_LIST_DIRECT) as usize;
                 let class = Cachestr::from(self.read_string()?);
+
+                trace!(
+                    "begin typed_list0: class={}, length={}",
+                    class.as_ref(),
+                    length
+                );
+
                 Ok((Some(class), Some(length)))
             }
             Header::BeginUntypedList0(n) => {
                 self.consume(1);
                 let length = (n - BC_LIST_DIRECT_UNTYPED) as usize;
+
+                trace!("begin untyped_list0: length={}", length);
+
                 Ok((None, Some(length)))
             }
             Header::BeginTypedList => {
                 self.consume(1);
                 let class = Cachestr::from(self.read_string()?);
                 let length = self.read_i32()? as usize;
+
+                trace!(
+                    "begin typed_list: class={}, length={}",
+                    class.as_ref(),
+                    length
+                );
+
                 Ok((Some(class), Some(length)))
             }
             Header::BeginUntypedList => {
                 self.consume(1);
                 let length = self.read_i32()? as usize;
+
+                trace!("begin untyped_list:  length={}", length);
+
                 Ok((None, Some(length)))
             }
             Header::BeginTypedListVariable => {
                 self.consume(1);
                 let class = Cachestr::from(self.read_string()?);
+
+                trace!("begin typed_list_variable: class={}", class.as_ref());
+
                 Ok((Some(class), None))
             }
             Header::BeginUntypedListVariable => {
                 self.consume(1);
+                trace!("begin untyped_list_variable");
+
                 Ok((None, None))
             }
             other => unexpect_type(HeaderFamily::List, other.family()),
@@ -376,6 +430,7 @@ where
         match self.peek()? {
             Header::Null => {
                 self.consume(1);
+                trace!("read_null");
                 Ok(())
             }
             other => unexpect_type(HeaderFamily::Null, other.family()),
@@ -388,8 +443,14 @@ where
             Header::Boolean(n) => {
                 self.consume(1);
                 match n {
-                    BC_BOOL_TRUE => Ok(true),
-                    BC_BOOL_FALSE => Ok(false),
+                    BC_BOOL_TRUE => {
+                        trace!("read_bool: {}", true);
+                        Ok(true)
+                    }
+                    BC_BOOL_FALSE => {
+                        trace!("read_bool: {}", false);
+                        Ok(false)
+                    }
                     _ => unreachable!(),
                 }
             }
@@ -405,6 +466,9 @@ where
                 let length = n as usize;
                 let mut s = String::with_capacity(length);
                 read_utf8(&mut self.r, &mut s, length)?;
+
+                trace!("read string_direct: {}", s.as_str());
+
                 Ok(s)
             }
             Header::StringShort(n) => {
@@ -417,6 +481,8 @@ where
                 };
                 let mut s = String::with_capacity(length);
                 read_utf8(&mut self.r, &mut s, length)?;
+
+                trace!("read string_short: {}", s.as_str());
                 Ok(s)
             }
             Header::StringChunk => {
@@ -432,6 +498,8 @@ where
 
                 read_utf8_chunked(&mut self.r, &mut s, length, false)?;
 
+                trace!("read string_chunked: {}", s.as_str());
+
                 Ok(s)
             }
             Header::StringFinal => {
@@ -446,6 +514,8 @@ where
 
                 read_utf8_chunked(&mut self.r, &mut s, length, true)?;
 
+                trace!("read string_final: {}", s.as_str());
+
                 Ok(s)
             }
             other => unexpect_type(HeaderFamily::String, other.family()),
@@ -458,13 +528,18 @@ where
             Header::Int0(n) => {
                 self.consume(1);
                 let direct = (n as i8) - (BC_INT_ZERO as i8);
+                trace!("read int0: {}", direct);
                 Ok(direct as i32)
             }
             Header::Int8(n) => {
                 self.consume(1);
                 let low = read_u8(&mut self.r)? as i32;
                 let high = (((n as i8) - (BC_INT_BYTE_ZERO as i8)) as i32) << 8;
-                Ok(high + low)
+                let i = high + low;
+
+                trace!("read int8: {}", i);
+
+                Ok(i)
             }
             Header::Int16(n) => {
                 self.consume(1);
@@ -474,11 +549,17 @@ where
                     let low = read_u8(&mut self.r)? as i32;
                     (high << 16) + (middle << 8) + low
                 };
+
+                trace!("read int16: {}", num);
+
                 Ok(num)
             }
             Header::Int32 => {
                 self.consume(1);
                 let v = read_i32(&mut self.r)?;
+
+                trace!("read int32: {}", v);
+
                 Ok(v)
             }
             other => unexpect_type(HeaderFamily::Int, other.family()),
@@ -1047,7 +1128,7 @@ mod tests {
             b
         };
 
-        info!("encode linked list: {}", hex::encode(&b));
+        trace!("encode linked list: {}", hex::encode(&b));
 
         assert_eq!(
             "73146a6176612e7574696c2e4c696e6b65644c69737403666f6f0362617203717578",
