@@ -3,7 +3,7 @@ members = [".", "hessian2-derive"]
 
 [package]
 name = "hessian2"
-version = "0.0.8"
+version = "0.0.9"
 edition = "2024"
 license = "MIT"
 readme = "README.md"
@@ -24,7 +24,7 @@ log = "0.4"
 serde = { version = "1", features = ["derive"] }
 smallvec = { version = "1.15", features = ["write"] }
 string_cache = "0.10"
-hessian2-derive = { path = "hessian2-derive", version = "0.0.5" }
+hessian2-derive = { path = "hessian2-derive", version = "0.0.6" }
 base64 = "0.22"
 indexmap = "2.14"
 thiserror = "2"
