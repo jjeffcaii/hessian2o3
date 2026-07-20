@@ -27,6 +27,9 @@ struct Model {
     java_names: Vec<String>,
     rust_idents: Vec<syn::Ident>,
     field_types: Vec<syn::Type>,
+    /// Per-field: `true` when the field carries `#[hessian(date)]`, meaning an
+    /// `i64` (Unix millis) is encoded as the Hessian date wire type.
+    is_date: Vec<bool>,
 }
 
 fn parse(input: &DeriveInput) -> syn::Result<Model> {
@@ -52,6 +55,7 @@ fn parse(input: &DeriveInput) -> syn::Result<Model> {
     let mut java_names: Vec<String> = Vec::new();
     let mut rust_idents: Vec<syn::Ident> = Vec::new();
     let mut field_types: Vec<syn::Type> = Vec::new();
+    let mut is_date: Vec<bool> = Vec::new();
 
     for field in named_fields {
         let ident = field.ident.as_ref().unwrap();
@@ -59,6 +63,7 @@ fn parse(input: &DeriveInput) -> syn::Result<Model> {
         java_names.push(java);
         rust_idents.push(ident.clone());
         field_types.push(field.ty.clone());
+        is_date.push(has_flag(&field.attrs, "date")?);
     }
 
     Ok(Model {
@@ -67,6 +72,7 @@ fn parse(input: &DeriveInput) -> syn::Result<Model> {
         java_names,
         rust_idents,
         field_types,
+        is_date,
     })
 }
 
@@ -76,12 +82,20 @@ fn expand_serialize(model: &Model) -> proc_macro2::TokenStream {
         class_name,
         java_names,
         rust_idents,
+        is_date,
         ..
     } = model;
 
-    let field_serializers = rust_idents.iter().map(|ident| {
-        quote! {
-            ::hessian2::HSerialize::hessian_serialize(&self.#ident, w)?;
+    let field_serializers = rust_idents.iter().zip(is_date).map(|(ident, &is_date)| {
+        if is_date {
+            // `#[hessian(date)]`: encode the `i64` millis as a Hessian date.
+            quote! {
+                ::hessian2::codec::Encoder::put_date_millis(w, self.#ident)?;
+            }
+        } else {
+            quote! {
+                ::hessian2::HSerialize::hessian_serialize(&self.#ident, w)?;
+            }
         }
     });
 
@@ -185,4 +199,25 @@ fn extract_class(input: &DeriveInput) -> syn::Result<String> {
 
 fn extract_rename(attrs: &[syn::Attribute]) -> syn::Result<Option<String>> {
     extract_hessian_str_arg(attrs, "rename")
+}
+
+/// Detects a bare boolean flag inside `#[hessian(...)]`, e.g. `#[hessian(date)]`.
+/// Ignores `key = "value"` entries so it composes with `rename` etc.
+fn has_flag(attrs: &[syn::Attribute], key: &str) -> syn::Result<bool> {
+    let mut found = false;
+    for attr in attrs {
+        if !attr.path().is_ident("hessian") {
+            continue;
+        }
+        attr.parse_nested_meta(|meta| {
+            if meta.input.peek(Token![=]) {
+                // a `key = value` entry: consume and ignore its value
+                let _: Lit = meta.value()?.parse()?;
+            } else if meta.path.is_ident(key) {
+                found = true;
+            }
+            Ok(())
+        })?;
+    }
+    Ok(found)
 }

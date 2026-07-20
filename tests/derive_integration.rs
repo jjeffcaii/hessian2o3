@@ -281,6 +281,39 @@ fn test_derive_deserialize_wrong_shape_errors() -> Result<()> {
 }
 
 #[test]
+fn test_hessian_date_field() -> Result<()> {
+    init();
+
+    #[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
+    #[hessian(class = "com.example.Employee")]
+    struct Employee {
+        name: String,
+        #[hessian(rename = "createdAt", date)]
+        created_at: i64,
+    }
+
+    let employee = Employee {
+        name: "Alice".to_owned(),
+        created_at: 1_749_540_617_123,
+    };
+
+    let bytes = hessian_to_vec(&employee)?;
+
+    // 0x4a is the full hessian date tag; a plain i64 would emit a long tag
+    // (0x4c or a short form) instead.
+    assert!(
+        hex::encode(&bytes).contains("4a"),
+        "date field must use the hessian date tag"
+    );
+
+    // decoding accepts the date wire type wherever an i64 is expected.
+    let back: Employee = hessian_from_slice(&bytes)?;
+    assert_eq!(employee, back);
+
+    Ok(())
+}
+
+#[test]
 fn test_derives_are_independent() -> Result<()> {
     init();
 

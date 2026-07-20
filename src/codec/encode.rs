@@ -177,7 +177,14 @@ where
             .duration_since(SystemTime::UNIX_EPOCH)
             .map(|it| it.as_millis() as i64)
             .unwrap_or(0);
+        self.put_date_millis(millis)
+    }
 
+    /// Encodes a date from raw Unix milliseconds, choosing the compact
+    /// minute-aligned form (`0x4b`) when possible, otherwise the full form
+    /// (`0x4a`).
+    #[inline]
+    pub fn put_date_millis(&mut self, millis: i64) -> Result<()> {
         if millis % 60000i64 == 0 {
             let minutes = millis / 60000i64;
             match minutes >> 31 {

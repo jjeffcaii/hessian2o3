@@ -19,6 +19,11 @@ project is still a work in progress and does not yet promise strict
   split out from `#[derive(HessianSerialize)]`
 - `get_value` / `get_value_from_slice` — dedicated readers that decode Hessian bytes into a
   `Value` with full fidelity, preserving the native `Date` primitive
+- `#[hessian(date)]` field attribute for the `HessianSerialize` derive — encodes an `i64`
+  (Unix milliseconds) field as the native Hessian date wire type (`0x4a`/`0x4b`), the derive
+  parallel to `#[serde(with = "hessian2::date")]`; decoding is unchanged since an `i64` field
+  already accepts a date value
+- `Encoder::put_date_millis` — public method to encode a date from raw Unix milliseconds
 
 ### Changed
 
