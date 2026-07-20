@@ -65,7 +65,7 @@ macro_rules! deserialize {
 mod tests {
     use crate::codec::Encoder;
     use crate::de::Deserializer;
-    use crate::hessian::{HSerialize, hessian_from_reader, hessian_to_vec};
+    use crate::hessian::{HSerialize, Wrapper, hessian_from_reader, hessian_to_vec};
     use crate::serde::to_vec;
     use crate::value::Value;
     use crate::{AutoDeserialize, HDeserialize, Result};
@@ -86,9 +86,9 @@ mod tests {
     impl HSerialize for User {
         fn hessian_serialize<W: io::Write>(&self, enc: &mut Encoder<W>) -> Result<()> {
             enc.begin_object("com.example.User", &["id", "name", "age"])?;
-            self.id.hessian_serialize(enc)?;
-            self.name.hessian_serialize(enc)?;
-            self.age.hessian_serialize(enc)?;
+            Wrapper(&self.id).hessian_serialize(enc)?;
+            Wrapper(&self.name).hessian_serialize(enc)?;
+            Wrapper(&self.age).hessian_serialize(enc)?;
             Ok(())
         }
     }

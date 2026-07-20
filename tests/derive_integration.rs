@@ -1,10 +1,10 @@
 #[macro_use]
-extern crate log;
-#[macro_use]
 extern crate hessian2;
+#[macro_use]
+extern crate log;
 use anyhow::Result;
 
-use hessian2::hessian::{hessian_from_slice, hessian_to_vec};
+use hessian2::hessian::{Wrapper, hessian_from_slice, hessian_to_vec};
 use hessian2::{HessianDeserialize, HessianSerialize};
 
 fn init() {
@@ -274,7 +274,7 @@ fn test_derive_deserialize_wrong_shape_errors() -> Result<()> {
     init();
 
     // a bare integer is not an object
-    let b = hessian_to_vec(&123i32)?;
+    let b = hessian_to_vec(&Wrapper(&123i32))?;
     assert!(hessian_from_slice::<Point>(&b).is_err());
 
     Ok(())

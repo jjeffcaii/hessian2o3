@@ -55,7 +55,10 @@ fn test_date_field_roundtrips_and_uses_hessian_date_tag() -> Result<()> {
     // declaration-order encoding even when both represent the same data.
     // `Value` reads go through the dedicated reader, which preserves the
     // `Date` primitive (the serde path decodes the date tag as a plain long).
-    assert_eq!(get_value_from_slice(&actual)?, get_value_from_slice(&expect)?);
+    assert_eq!(
+        get_value_from_slice(&actual)?,
+        get_value_from_slice(&expect)?
+    );
 
     // 0x4a is the hessian date wire tag; a plain `i64` field would never
     // produce it (it'd use the long tag 0x4c or one of its short forms).

@@ -94,13 +94,13 @@ fn expand_serialize(model: &Model) -> proc_macro2::TokenStream {
             }
         } else {
             quote! {
-                ::hessian2::HSerialize::hessian_serialize(&self.#ident, w)?;
+                ::hessian2::hessian::HSerialize::hessian_serialize(&::hessian2::hessian::Wrapper(&self.#ident), w)?;
             }
         }
     });
 
     quote! {
-        impl ::hessian2::HSerialize for #name {
+        impl ::hessian2::hessian::HSerialize for #name {
             fn hessian_serialize<W: ::std::io::Write>(
                 &self,
                 w: &mut ::hessian2::codec::Encoder<W>,
@@ -126,7 +126,7 @@ fn expand_deserialize(model: &Model) -> proc_macro2::TokenStream {
     } = model;
 
     quote! {
-        impl ::hessian2::HDeserialize for #name {
+        impl ::hessian2::hessian::HDeserialize for #name {
             fn hessian_deserialize<__R: ::std::io::Read>(
                 de: &mut ::hessian2::de::Deserializer<__R>,
             ) -> ::hessian2::Result<Self> {

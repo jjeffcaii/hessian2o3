@@ -1,11 +1,11 @@
 use super::de::Deserializer;
 use super::ser::{DefaultFormatter, Serializer};
+use crate::Result;
 use crate::codec::Encoder;
 use crate::hessian::HSerialize;
 use crate::value::Value;
-use crate::Result;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::io;
 
 // Rust has no stable trait specialization, so `to_writer`/`to_vec` can't
@@ -109,6 +109,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hessian::Wrapper;
     use crate::value::Value;
     use serde::Deserialize;
     use serde_json::json;
@@ -122,8 +123,8 @@ mod tests {
     impl HSerialize for Point {
         fn hessian_serialize<W: io::Write>(&self, enc: &mut Encoder<W>) -> Result<()> {
             enc.begin_object("com.example.Point", &["x", "y"])?;
-            self.x.hessian_serialize(enc)?;
-            self.y.hessian_serialize(enc)?;
+            Wrapper(&self.x).hessian_serialize(enc)?;
+            Wrapper(&self.y).hessian_serialize(enc)?;
             Ok(())
         }
     }

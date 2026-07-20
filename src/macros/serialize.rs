@@ -21,7 +21,10 @@ pub trait SerializeViaHessian {
     fn __serialize<W: io::Write>(&self, writer: W) -> Result<()>;
 }
 
-impl<T: ?Sized + HSerialize> SerializeViaHessian for T {
+impl<T> SerializeViaHessian for T
+where
+    T: ?Sized + HSerialize,
+{
     #[inline]
     fn __serialize<W: io::Write>(&self, writer: W) -> Result<()> {
         to_writer(writer, &Hessian(self))
@@ -30,12 +33,20 @@ impl<T: ?Sized + HSerialize> SerializeViaHessian for T {
 
 #[doc(hidden)]
 pub trait SerializeViaSerde {
-    fn __serialize<W: io::Write>(&self, writer: W) -> Result<()>;
+    fn __serialize<W>(&self, writer: W) -> Result<()>
+    where
+        W: io::Write;
 }
 
-impl<T: ?Sized + Serialize> SerializeViaSerde for &T {
+impl<T> SerializeViaSerde for &T
+where
+    T: ?Sized + Serialize,
+{
     #[inline]
-    fn __serialize<W: io::Write>(&self, writer: W) -> Result<()> {
+    fn __serialize<W>(&self, writer: W) -> Result<()>
+    where
+        W: io::Write,
+    {
         to_writer(writer, *self)
     }
 }

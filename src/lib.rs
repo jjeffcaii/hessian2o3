@@ -41,9 +41,9 @@ pub type Result<T> = std::result::Result<T, error::Error>;
 
 pub use serde::*;
 
+pub use macros::deserialize::AutoDeserialize;
 #[doc(hidden)]
 pub use macros::serialize::{SerializeViaHessian, SerializeViaSerde};
-pub use macros::deserialize::AutoDeserialize;
 
 #[cfg(test)]
 mod tests {
