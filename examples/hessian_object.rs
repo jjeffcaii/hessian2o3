@@ -7,7 +7,7 @@ use hessian2::prelude::*;
 use hessian2::to_vec;
 
 // ── Section 1: simple struct ──────────────────────────────────────────────
-#[derive(HessianSerialize, Debug, PartialEq)]
+#[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
 #[hessian(class = "com.example.User")]
 struct User {
     id: i64,
@@ -16,14 +16,14 @@ struct User {
 }
 
 // ── Section 2: nested objects ─────────────────────────────────────────────
-#[derive(HessianSerialize, Debug, PartialEq)]
+#[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
 #[hessian(class = "com.example.Address")]
 struct Address {
     city: String,
     zipcode: String,
 }
 
-#[derive(HessianSerialize, Debug, PartialEq)]
+#[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
 #[hessian(class = "com.example.UserWithAddress")]
 struct UserWithAddress {
     id: i64,
@@ -33,7 +33,7 @@ struct UserWithAddress {
 }
 
 // ── Section 3: field rename (Rust snake_case → Java camelCase) ───────────
-#[derive(HessianSerialize, Debug, PartialEq)]
+#[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
 #[hessian(class = "com.example.Product")]
 struct Product {
     #[hessian(rename = "productId")]

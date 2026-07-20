@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 project is still a work in progress and does not yet promise strict
 [Semantic Versioning](https://semver.org/) guarantees between `0.0.x` releases.
 
+## [0.0.8] - 2026-07-20
+
+### Added
+
+- `serialize!` macro — auto-selects the encoding from the value's type: uses its
+  `HSerialize` impl when it has one, otherwise the `serde::Serialize` path
+- `deserialize!` macro — auto-selects the decoding from the inferred target type `T`:
+  uses `T`'s `HDeserialize` impl when it has one, otherwise `serde` (backed by the new
+  `AutoDeserialize` trait)
+- `#[derive(HessianDeserialize)]` — new derive generating the `HDeserialize` (decode) impl,
+  split out from `#[derive(HessianSerialize)]`
+- `get_value` / `get_value_from_slice` — dedicated readers that decode Hessian bytes into a
+  `Value` with full fidelity, preserving the native `Date` primitive
+
+### Changed
+
+- **Breaking:** `#[derive(HessianSerialize)]` now generates only the `HSerialize` (encode)
+  impl; derive `HessianDeserialize` as well to get the decode side (previously the single
+  derive generated both)
+- `from_reader`/`from_slice` no longer special-case `Value`; every type decodes uniformly
+  through `serde`. Use `get_value`/`get_value_from_slice` for date-faithful `Value` decoding
+  (the `serde` path decodes a date tag as a plain long). The now-unnecessary `T: 'static`
+  bound was dropped from both functions
+
 ## [0.0.7] - 2026-07-17
 
 ### Added

@@ -24,6 +24,8 @@ pub mod date;
 pub mod de;
 pub(crate) mod error;
 pub mod hessian;
+#[macro_use]
+mod macros;
 mod misc;
 pub mod prelude;
 pub(crate) mod ser;
@@ -33,11 +35,15 @@ pub mod value;
 
 pub use error::Error;
 pub use hessian::{HDeserialize, HSerialize};
-pub use hessian2_derive::HessianSerialize;
+pub use hessian2_derive::{HessianDeserialize, HessianSerialize};
 
 pub type Result<T> = std::result::Result<T, error::Error>;
 
 pub use serde::*;
+
+#[doc(hidden)]
+pub use macros::serialize::{SerializeViaHessian, SerializeViaSerde};
+pub use macros::deserialize::AutoDeserialize;
 
 #[cfg(test)]
 mod tests {

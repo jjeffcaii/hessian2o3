@@ -17,17 +17,18 @@ A Rust implementation of the [Hessian 2.0 Serialization Protocol](http://hessian
 
 - **Encoding & decoding** — full Hessian 2.0 binary serialization, including compact int/long/double forms, chunked strings/binary, typed lists/maps, and class-definition reuse for objects; decoding accepts every list form (direct, fixed-length, and `'Z'`-terminated variable-length)
 - **serde integration** — encode/decode any `Serialize` / `Deserialize` type via `to_vec` / `to_writer` / `from_slice` / `from_reader`; wrap a value as `Hessian(&value)` to make `to_vec`/`to_writer` prefer its manual `HSerialize` impl over `Serialize` when a type implements both
-- **`#[derive(HessianSerialize)]`** — map Rust structs to Java classes with `#[hessian(class = "...")]` and per-field `#[hessian(rename = "...")]`, generating both `HSerialize` and `HDeserialize` impls
-- **Dynamic `Value` type** — decode arbitrary Hessian data without knowing its shape upfront, with indexing and `Display` support
+- **`serialize!` / `deserialize!` macros** — auto-select the encoding by type: `serialize!(w, v)` uses a value's `HSerialize` impl when it has one (otherwise `serde`), and `let v: T = deserialize!(r)?` uses `T`'s `HDeserialize` impl when it has one (otherwise `serde`)
+- **`#[derive(HessianSerialize)]` / `#[derive(HessianDeserialize)]`** — map Rust structs to Java classes with `#[hessian(class = "...")]` and per-field `#[hessian(rename = "...")]`; `HessianSerialize` generates the `HSerialize` (encode) impl, `HessianDeserialize` the `HDeserialize` (decode) impl — derive one or both
+- **Dynamic `Value` type** — decode arbitrary Hessian data without knowing its shape upfront, with indexing and `Display` support; `get_value` / `get_value_from_slice` read one with full fidelity (e.g. preserving the native `Date` primitive)
 - **`hessian!` macro** — build a `Value` from a JSON-like literal, similar to `serde_json::json!`
-- **`hessian2::prelude`** — `use hessian2::prelude::*;` pulls in the common traits and derive macro (`HSerialize`, `HDeserialize`, `HessianSerialize`, `Hessian`, `HessianWriteable`) in one line
+- **`hessian2::prelude`** — `use hessian2::prelude::*;` pulls in the common traits and derive macros (`HSerialize`, `HDeserialize`, `HessianSerialize`, `HessianDeserialize`, `Hessian`, `HessianWriteable`) in one line
 - **Hessian `Date` support** — `#[serde(with = "hessian2::date")]` on an `i64` (Unix milliseconds) field encodes/decodes it as a native Hessian date instead of a plain long
 
 ## Installation
 
 ```toml
 [dependencies]
-hessian2 = "0.0.7"
+hessian2 = "0.0.8"
 ```
 
 ## Usage
@@ -86,17 +87,17 @@ let back: Employee = from_slice(&bytes)?;
 assert_eq!(employee, back);
 ```
 
-Decoding accepts either wire flavor (`Date` or a plain `long`) for such a field. This also applies to the dynamic `Value` type: `PrimitiveValue::Date` round-trips through `to_vec`/`from_slice` as a native Hessian date.
+Decoding accepts either wire flavor (`Date` or a plain `long`) for such a field. For the dynamic `Value` type, use `get_value` / `get_value_from_slice` to preserve the native `PrimitiveValue::Date` — the plain `from_slice::<Value>` serde path decodes a date as a `long`.
 
-### Java objects with `#[derive(HessianSerialize)]`
+### Java objects with `#[derive(HessianSerialize)]` / `#[derive(HessianDeserialize)]`
 
-To interop with Java, encode a struct as a Hessian *object* carrying a Java class name. `#[derive(HessianSerialize)]` generates both `HSerialize` and `HDeserialize` impls:
+To interop with Java, encode a struct as a Hessian *object* carrying a Java class name. Derive `HessianSerialize` for the encode (`HSerialize`) impl and `HessianDeserialize` for the decode (`HDeserialize`) impl — pick one direction or both:
 
 ```rust
-use hessian2::HessianSerialize;
+use hessian2::{HessianDeserialize, HessianSerialize};
 use hessian2::hessian::{hessian_from_slice, hessian_to_vec};
 
-#[derive(HessianSerialize, Debug, PartialEq)]
+#[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
 #[hessian(class = "com.example.Point")]
 struct Point {
     x: i32,
@@ -110,7 +111,23 @@ let back: Point = hessian_from_slice(&bytes)?;
 assert_eq!(point, back);
 ```
 
-Nested `#[derive(HessianSerialize)]` structs are supported, and repeated classes reuse Hessian class-definition references automatically.
+Nested structs are supported, and repeated classes reuse Hessian class-definition references automatically.
+
+### Automatic dispatch with `serialize!` / `deserialize!`
+
+When a value might use either the `serde` or the Hessian path, the `serialize!` / `deserialize!` macros pick for you based on the type — a derived `HessianSerialize` / `HessianDeserialize` type takes the Hessian path, anything else falls back to `serde`:
+
+```rust
+use hessian2::{deserialize, serialize};
+
+// `point` is the HessianSerialize/HessianDeserialize type from above
+let mut buf = Vec::new();
+serialize!(&mut buf, point)?;                    // uses HSerialize
+let back: Point = deserialize!(buf.as_slice())?; // uses HDeserialize
+assert_eq!(point, back);
+```
+
+A type that implements only `serde::Serialize` / `serde::Deserialize` flows through the `serde` path instead — same macro, no code change at the call site.
 
 ### Building a `Value` with the `hessian!` macro
 
@@ -139,19 +156,21 @@ let list = hessian!([1, "two", [3, 4], null, age]);
 
 ### Decoding unknown data into `Value`
 
-When you don't know the shape of the incoming bytes, decode into the dynamic `Value` type:
+When you don't know the shape of the incoming bytes, decode into the dynamic `Value` type with `get_value_from_slice` (or `get_value` for an `io::Read`):
 
 ```rust
-use hessian2::from_slice;
+use hessian2::get_value_from_slice;
 use hessian2::value::Value;
 
 let data: &[u8] = &[ /* hessian bytes */ ];
-let value: Value = from_slice(data)?;
+let value: Value = get_value_from_slice(data)?;
 
 // index into maps and lists
 println!("{}", value["name"]);
 println!("{}", value[0]);
 ```
+
+`from_slice::<Value>` also works via the `serde` path, but `get_value` / `get_value_from_slice` are the faithful readers (they preserve the native `Date` primitive).
 
 ## The `Value` type
 
@@ -184,7 +203,7 @@ It supports `Display`, `Debug`, `PartialEq`, and indexing by integer (lists) or 
 | `Vec<T>` | untyped fixed list |
 | `HashMap<K, V>` | untyped map |
 | `i64` with `#[serde(with = "hessian2::date")]` | date |
-| structs via `#[derive(HessianSerialize)]` | Java object |
+| structs via `#[derive(HessianSerialize)]` / `#[derive(HessianDeserialize)]` | Java object |
 
 ## Examples
 
@@ -192,7 +211,7 @@ Runnable examples live in [`examples/`](examples/):
 
 ```bash
 cargo run --example hessian_macro    # hessian! literals
-cargo run --example hessian_object   # #[derive(HessianSerialize)] round trips
+cargo run --example hessian_object   # derived Java-object round trips
 ```
 
 ## Development

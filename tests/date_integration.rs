@@ -3,7 +3,7 @@ extern crate log;
 
 use anyhow::Result;
 use hessian2::value::{Map, PrimitiveValue, Value};
-use hessian2::{from_slice, to_vec};
+use hessian2::{from_slice, get_value_from_slice, to_vec};
 use serde::{Deserialize, Serialize};
 
 fn init() {
@@ -53,7 +53,9 @@ fn test_date_field_roundtrips_and_uses_hessian_date_tag() -> Result<()> {
     // a `Map`, which is `HashMap`-backed and has no field-ordering
     // guarantee, so its wire bytes need not match the struct's
     // declaration-order encoding even when both represent the same data.
-    assert_eq!(from_slice::<Value>(&actual)?, from_slice::<Value>(&expect)?);
+    // `Value` reads go through the dedicated reader, which preserves the
+    // `Date` primitive (the serde path decodes the date tag as a plain long).
+    assert_eq!(get_value_from_slice(&actual)?, get_value_from_slice(&expect)?);
 
     // 0x4a is the hessian date wire tag; a plain `i64` field would never
     // produce it (it'd use the long tag 0x4c or one of its short forms).
@@ -62,7 +64,7 @@ fn test_date_field_roundtrips_and_uses_hessian_date_tag() -> Result<()> {
     let back: Employee = from_slice(&actual)?;
     assert_eq!(employee, back);
 
-    let actual_value: Value = from_slice(&actual)?;
+    let actual_value: Value = get_value_from_slice(&actual)?;
     let created_at = &actual_value["created_at"];
 
     let mut is_date = false;

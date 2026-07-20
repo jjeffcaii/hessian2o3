@@ -5,43 +5,79 @@ use syn::{Data, DeriveInput, Error, Fields, Lit, LitStr, Token, parse_macro_inpu
 #[proc_macro_derive(HessianSerialize, attributes(hessian))]
 pub fn derive_hessian_serialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    match expand(input) {
+    match parse(&input).map(|m| expand_serialize(&m)) {
         Ok(ts) => ts.into(),
         Err(e) => e.to_compile_error().into(),
     }
 }
 
-fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
-    let name = &input.ident;
+#[proc_macro_derive(HessianDeserialize, attributes(hessian))]
+pub fn derive_hessian_deserialize(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match parse(&input).map(|m| expand_deserialize(&m)) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
 
-    let class_name = extract_class(&input)?;
+/// The struct shape both derives operate on, parsed once.
+struct Model {
+    name: syn::Ident,
+    class_name: String,
+    java_names: Vec<String>,
+    rust_idents: Vec<syn::Ident>,
+    field_types: Vec<syn::Type>,
+}
+
+fn parse(input: &DeriveInput) -> syn::Result<Model> {
+    let name = input.ident.clone();
+
+    let class_name = extract_class(input)?;
 
     let named_fields = match &input.data {
         Data::Struct(s) => match &s.fields {
             Fields::Named(f) => &f.named,
             _ => {
                 return Err(Error::new_spanned(
-                    name,
+                    &name,
                     "Hessian only supports named-field structs",
                 ));
             }
         },
         _ => {
-            return Err(Error::new_spanned(name, "Hessian only supports structs"));
+            return Err(Error::new_spanned(&name, "Hessian only supports structs"));
         }
     };
 
     let mut java_names: Vec<String> = Vec::new();
-    let mut rust_idents: Vec<&syn::Ident> = Vec::new();
-    let mut field_types: Vec<&syn::Type> = Vec::new();
+    let mut rust_idents: Vec<syn::Ident> = Vec::new();
+    let mut field_types: Vec<syn::Type> = Vec::new();
 
     for field in named_fields {
         let ident = field.ident.as_ref().unwrap();
         let java = extract_rename(&field.attrs)?.unwrap_or_else(|| ident.to_string());
         java_names.push(java);
-        rust_idents.push(ident);
-        field_types.push(&field.ty);
+        rust_idents.push(ident.clone());
+        field_types.push(field.ty.clone());
     }
+
+    Ok(Model {
+        name,
+        class_name,
+        java_names,
+        rust_idents,
+        field_types,
+    })
+}
+
+fn expand_serialize(model: &Model) -> proc_macro2::TokenStream {
+    let Model {
+        name,
+        class_name,
+        java_names,
+        rust_idents,
+        ..
+    } = model;
 
     let field_serializers = rust_idents.iter().map(|ident| {
         quote! {
@@ -49,7 +85,7 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         }
     });
 
-    Ok(quote! {
+    quote! {
         impl ::hessian2::HSerialize for #name {
             fn hessian_serialize<W: ::std::io::Write>(
                 &self,
@@ -63,7 +99,19 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 ::hessian2::Result::Ok(())
             }
         }
+    }
+}
 
+fn expand_deserialize(model: &Model) -> proc_macro2::TokenStream {
+    let Model {
+        name,
+        java_names,
+        rust_idents,
+        field_types,
+        ..
+    } = model;
+
+    quote! {
         impl ::hessian2::HDeserialize for #name {
             fn hessian_deserialize<__R: ::std::io::Read>(
                 de: &mut ::hessian2::de::Deserializer<__R>,
@@ -97,7 +145,16 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 })
             }
         }
-    })
+
+        // Routes `deserialize!` for this type through the Hessian path (rule 1).
+        impl ::hessian2::AutoDeserialize for #name {
+            fn auto_deserialize<__R: ::std::io::Read>(
+                mut reader: __R,
+            ) -> ::hessian2::Result<Self> {
+                ::hessian2::hessian::hessian_from_reader(&mut reader)
+            }
+        }
+    }
 }
 
 fn extract_hessian_str_arg(attrs: &[syn::Attribute], key: &str) -> syn::Result<Option<String>> {

@@ -1,15 +1,17 @@
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate hessian2;
 use anyhow::Result;
 
-use hessian2::HessianSerialize;
 use hessian2::hessian::{hessian_from_slice, hessian_to_vec};
+use hessian2::{HessianDeserialize, HessianSerialize};
 
 fn init() {
     pretty_env_logger::try_init_timed().ok();
 }
 
-#[derive(HessianSerialize, Debug, PartialEq)]
+#[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
 #[hessian(class = "com.example.Point")]
 struct Point {
     x: i32,
@@ -29,7 +31,7 @@ fn test_derive_simple_struct() -> Result<()> {
     Ok(())
 }
 
-#[derive(HessianSerialize, Debug, PartialEq)]
+#[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
 #[hessian(class = "com.example.User")]
 struct User {
     #[hessian(rename = "id")]
@@ -68,7 +70,7 @@ fn test_derive_with_rename() -> Result<()> {
     Ok(())
 }
 
-#[derive(HessianSerialize, Debug, PartialEq)]
+#[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
 #[hessian(class = "com.example.Address")]
 struct Address {
     #[hessian(rename = "city")]
@@ -77,7 +79,7 @@ struct Address {
     zipcode: String,
 }
 
-#[derive(HessianSerialize, Debug, PartialEq)]
+#[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
 #[hessian(class = "com.example.UserFull")]
 struct UserFull {
     #[hessian(rename = "id")]
@@ -133,7 +135,7 @@ fn test_nested_objects_match_encode_test() -> Result<()> {
 fn test_option_and_vec_fields() -> Result<()> {
     init();
 
-    #[derive(HessianSerialize, Debug, PartialEq)]
+    #[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
     #[hessian(class = "com.example.Container")]
     struct Container {
         #[hessian(rename = "maybeVal")]
@@ -240,7 +242,7 @@ fn test_derive_roundtrip_nested() -> Result<()> {
 fn test_derive_roundtrip_option_and_vec() -> Result<()> {
     init();
 
-    #[derive(HessianSerialize, Debug, PartialEq)]
+    #[derive(HessianSerialize, HessianDeserialize, Debug, PartialEq)]
     #[hessian(class = "com.example.Container")]
     struct Container {
         #[hessian(rename = "maybeVal")]
@@ -274,6 +276,78 @@ fn test_derive_deserialize_wrong_shape_errors() -> Result<()> {
     // a bare integer is not an object
     let b = hessian_to_vec(&123i32)?;
     assert!(hessian_from_slice::<Point>(&b).is_err());
+
+    Ok(())
+}
+
+#[test]
+fn test_derives_are_independent() -> Result<()> {
+    init();
+
+    // Serialize-only: only `HSerialize` is generated (no `HDeserialize`).
+    #[derive(HessianSerialize)]
+    #[hessian(class = "com.example.Indep")]
+    struct SerOnly {
+        v: i32,
+    }
+
+    // Deserialize-only: only `HDeserialize` + `AutoDeserialize` (no `HSerialize`).
+    #[derive(HessianDeserialize, Debug, PartialEq)]
+    #[hessian(class = "com.example.Indep")]
+    struct DeOnly {
+        v: i32,
+    }
+
+    let bytes = hessian_to_vec(&SerOnly { v: 42 })?;
+
+    let got: DeOnly = hessian_from_slice(&bytes)?;
+    assert_eq!(got, DeOnly { v: 42 });
+
+    // the `deserialize!` macro routes the deserialize-only type via Hessian too.
+    let got2: DeOnly = deserialize!(bytes.as_slice())?;
+    assert_eq!(got2, DeOnly { v: 42 });
+
+    Ok(())
+}
+
+#[test]
+fn test_deserialize_macro_dispatch() -> Result<()> {
+    init();
+
+    // Cross-crate check: the derive-generated `AutoDeserialize` impl coexists
+    // with hessian2's blanket serde impl, and `deserialize!` routes each target
+    // type to the correct path.
+
+    // rule 1: `User` derives `HessianSerialize` (HDeserialize) -> Hessian path.
+    let user = User {
+        id: 1234,
+        name: String::from("杨幂"),
+        age: 18,
+    };
+    let bytes = hessian_to_vec(&user)?;
+    let got: User = deserialize!(bytes.as_slice())?;
+    assert_eq!(user, got);
+
+    // rule 2: a serde-only type -> serde path.
+    #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+    struct SimpleUser {
+        id: i64,
+        name: String,
+        age: i32,
+    }
+    let simple = SimpleUser {
+        id: 9,
+        name: String::from("bob"),
+        age: 42,
+    };
+    let sbytes = hessian2::to_vec(&simple)?;
+    let sgot: SimpleUser = deserialize!(sbytes.as_slice())?;
+    assert_eq!(simple, sgot);
+
+    // rule 3: `Value` decodes through the serde path.
+    let vgot: hessian2::value::Value = deserialize!(sbytes.as_slice())?;
+    let vback: SimpleUser = hessian2::from_value(vgot)?;
+    assert_eq!(simple, vback);
 
     Ok(())
 }

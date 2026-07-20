@@ -1,12 +1,11 @@
 use super::de::Deserializer;
 use super::ser::{DefaultFormatter, Serializer};
-use crate::Result;
 use crate::codec::Encoder;
 use crate::hessian::HSerialize;
 use crate::value::Value;
-use serde::Serialize;
+use crate::Result;
 use serde::de::DeserializeOwned;
-use std::any::{Any, TypeId};
+use serde::Serialize;
 use std::io;
 
 // Rust has no stable trait specialization, so `to_writer`/`to_vec` can't
@@ -71,21 +70,30 @@ where
 pub fn from_reader<R, T>(reader: R) -> Result<T>
 where
     R: io::Read,
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned,
 {
     let mut de = Deserializer::new(reader);
-    if TypeId::of::<T>() == TypeId::of::<Value>() {
-        let value = de.read_value()?;
-        let any: Box<dyn Any> = Box::new(value);
-        return Ok(*any.downcast::<T>().unwrap());
-    }
     T::deserialize(&mut de)
+}
+
+#[inline]
+pub fn get_value<R>(reader: R) -> Result<Value>
+where
+    R: io::Read,
+{
+    let mut de = Deserializer::new(reader);
+    de.read_value()
+}
+
+#[inline]
+pub fn get_value_from_slice(v: &[u8]) -> Result<Value> {
+    get_value(v)
 }
 
 #[inline]
 pub fn from_slice<T>(v: &[u8]) -> Result<T>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned,
 {
     from_reader(v)
 }
@@ -192,6 +200,40 @@ mod tests {
             "4311636f6d2e6578616d706c652e506f696e749201780179609192",
             hex::encode(&bytes)
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_serialize_macro_prefers_hessian() -> anyhow::Result<()> {
+        init();
+
+        // `Point` implements both `Serialize` and `HSerialize`; `serialize!`
+        // must dispatch to the `HSerialize` path.
+        let mut buf = Vec::new();
+        serialize!(&mut buf, Point { x: 1, y: 2 })?;
+        assert_eq!(
+            "4311636f6d2e6578616d706c652e506f696e749201780179609192",
+            hex::encode(&buf)
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_serialize_macro_falls_back_to_serde() -> anyhow::Result<()> {
+        init();
+
+        // `OnlySerde` implements only `Serialize`, so `serialize!` must match
+        // the plain `serde` output.
+        #[derive(Serialize)]
+        struct OnlySerde {
+            n: i32,
+        }
+
+        let mut buf = Vec::new();
+        serialize!(&mut buf, OnlySerde { n: 1 })?;
+        assert_eq!(to_vec(&OnlySerde { n: 1 })?, buf);
 
         Ok(())
     }
