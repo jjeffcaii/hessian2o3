@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 project is still a work in progress and does not yet promise strict
 [Semantic Versioning](https://semver.org/) guarantees between `0.0.x` releases.
 
+## [0.0.10] - 2026-07-22
+
+### Added
+
+- `From` impls for `Value`/`PrimitiveValue` covering `i8`, `i16`, `u8`, `u16`, `u32`, `u64`,
+  `isize`, `usize`, `f32`, `&str`, and `Cow<str>`
+- `Clone` derives for `Value`, `PrimitiveValue`, `List`, `Map`, and `Object`
+
 ## [0.0.9] - 2026-07-20
 
 ### Added
