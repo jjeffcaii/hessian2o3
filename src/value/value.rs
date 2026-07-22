@@ -1,13 +1,15 @@
 use super::list::List;
 use super::map::Map;
 use super::object::Object;
-use crate::Error;
 use crate::misc::encode_base64;
+use crate::Error;
+use std::borrow::Cow;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::result::Result as StdResult;
 use std::time;
 
+#[derive(Clone)]
 pub enum PrimitiveValue {
     Bool(bool),
     Int(i32),
@@ -95,6 +97,18 @@ impl From<bool> for PrimitiveValue {
     }
 }
 
+impl From<i8> for PrimitiveValue {
+    fn from(i: i8) -> Self {
+        From::from(i as i32)
+    }
+}
+
+impl From<i16> for PrimitiveValue {
+    fn from(i: i16) -> Self {
+        From::from(i as i32)
+    }
+}
+
 impl From<i32> for PrimitiveValue {
     fn from(i: i32) -> Self {
         PrimitiveValue::Int(i)
@@ -104,6 +118,36 @@ impl From<i32> for PrimitiveValue {
 impl From<i64> for PrimitiveValue {
     fn from(i: i64) -> Self {
         PrimitiveValue::Long(i)
+    }
+}
+
+impl From<u8> for PrimitiveValue {
+    fn from(i: u8) -> Self {
+        From::from(i as i32)
+    }
+}
+
+impl From<u16> for PrimitiveValue {
+    fn from(i: u16) -> Self {
+        From::from(i as i32)
+    }
+}
+
+impl From<u32> for PrimitiveValue {
+    fn from(i: u32) -> Self {
+        From::from(i as i64)
+    }
+}
+
+impl From<u64> for PrimitiveValue {
+    fn from(i: u64) -> Self {
+        From::from(i as i64)
+    }
+}
+
+impl From<f32> for PrimitiveValue {
+    fn from(f: f32) -> Self {
+        From::from(f as f64)
     }
 }
 
@@ -144,7 +188,7 @@ impl From<&str> for PrimitiveValue {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum Value {
     Null,
     Primitive(PrimitiveValue),
@@ -224,6 +268,24 @@ impl From<List> for Value {
     }
 }
 
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        Self::Primitive(PrimitiveValue::Bool(value))
+    }
+}
+
+impl From<i8> for Value {
+    fn from(value: i8) -> Self {
+        From::from(value as i32)
+    }
+}
+
+impl From<i16> for Value {
+    fn from(value: i16) -> Self {
+        From::from(value as i32)
+    }
+}
+
 impl From<i32> for Value {
     fn from(value: i32) -> Self {
         Self::Primitive(PrimitiveValue::Int(value))
@@ -236,21 +298,69 @@ impl From<i64> for Value {
     }
 }
 
+impl From<u8> for Value {
+    fn from(value: u8) -> Self {
+        From::from(value as i32)
+    }
+}
+
+impl From<u16> for Value {
+    fn from(value: u16) -> Self {
+        From::from(value as i32)
+    }
+}
+
+impl From<u32> for Value {
+    fn from(value: u32) -> Self {
+        From::from(value as i64)
+    }
+}
+
+impl From<u64> for Value {
+    fn from(value: u64) -> Self {
+        From::from(value as i64)
+    }
+}
+
+impl From<isize> for Value {
+    fn from(value: isize) -> Self {
+        From::from(value as i64)
+    }
+}
+
+impl From<usize> for Value {
+    fn from(value: usize) -> Self {
+        From::from(value as i64)
+    }
+}
+
+impl From<f32> for Value {
+    fn from(value: f32) -> Self {
+        From::from(value as f64)
+    }
+}
+
 impl From<f64> for Value {
     fn from(value: f64) -> Self {
         Self::Primitive(PrimitiveValue::Double(value))
     }
 }
 
-impl From<bool> for Value {
-    fn from(value: bool) -> Self {
-        Self::Primitive(PrimitiveValue::Bool(value))
-    }
-}
-
 impl From<String> for Value {
     fn from(value: String) -> Self {
         Self::Primitive(PrimitiveValue::String(value))
+    }
+}
+
+impl<'a> From<Cow<'a, str>> for Value {
+    fn from(value: Cow<'a, str>) -> Self {
+        From::from(value.to_string())
+    }
+}
+
+impl From<&str> for Value {
+    fn from(value: &str) -> Self {
+        From::from(value.to_owned())
     }
 }
 

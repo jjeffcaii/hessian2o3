@@ -4,7 +4,7 @@ use crate::value::Value;
 use std::fmt::{self, Display};
 use std::ops;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Object {
     class: Cachestr,
     fields: Fields,

@@ -134,7 +134,7 @@ pub struct Values<'a> {
 
 type MapImpl = HashMap<Key, Value>;
 
-#[derive(PartialEq, Default)]
+#[derive(PartialEq, Default, Clone)]
 pub struct Map {
     class: Option<Cachestr>,
     map: MapImpl,

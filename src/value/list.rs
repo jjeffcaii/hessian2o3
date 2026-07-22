@@ -17,7 +17,7 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-#[derive(PartialEq, Default)]
+#[derive(PartialEq, Default, Clone)]
 pub struct List {
     class: Option<Cachestr>,
     l: Vec<Value>,
